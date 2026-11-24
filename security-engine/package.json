@@ -1,0 +1,19 @@
+{
+  "name": "campusvault-security-engine",
+  "version": "1.0.0",
+  "description": "Zero-Trust Campus Document Exchange – Security Engine (Team 2)",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --verbose --forceExit",
+    "test:unit": "jest --verbose --forceExit tests/unit/",
+    "test:integration": "jest --verbose --forceExit tests/integration/",
+    "test:attack": "jest --verbose --forceExit tests/attack-simulation/",
+    "test:report": "jest --verbose --forceExit --json --outputFile=test-report.json"
+  },
+  "keywords": ["zero-trust", "rbac", "abac", "security", "campusvault"],
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
+

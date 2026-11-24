@@ -1,0 +1,224 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("student") // student | faculty | admin | hod
+  departmentId String?
+  status       String   @default("active") // active | suspended | inactive
+  websiteLanguage String @default("en")
+  aiLanguage      String @default("auto")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department         Department?       @relation(fields: [departmentId], references: [id])
+  uploadedDocuments  Document[]        @relation("UploadedDocuments")
+  accessGrants       AccessGrant[]     @relation("UserGrants")
+  grantedGrants      AccessGrant[]     @relation("GrantedByGrants")
+  auditLogs          AuditLog[]
+  aiAccessRequests   AiAccessRequest[] @relation("UserAiRequests")
+  reviewedAiRequests AiAccessRequest[] @relation("ReviewedAiRequests")
+  aiChatSessions     AiChatSession[]
+  aiChatMessages     AiChatMessage[]
+  sentMessages       SecureMessage[]   @relation("SentMessages")
+  receivedMessages   SecureMessage[]   @relation("ReceivedMessages")
+  notifications      Notification[]
+
+  @@index([email])
+  @@index([departmentId])
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users     User[]
+  documents Document[]
+}
+
+model Document {
+  id              String   @id @default(uuid())
+  title           String
+  description     String?
+  departmentId    String
+  classification  String   @default("internal") // public | internal | confidential | restricted
+  discoverability String   @default("DEPARTMENT_DISCOVERABLE") // DEPARTMENT_DISCOVERABLE | PRIVATE | RESTRICTED
+  fileName        String
+  fileSize        Int
+  mimeType        String
+  storageKey      String   @unique // Internal storage path - never exposed publicly
+  uploadedById    String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  department       Department        @relation(fields: [departmentId], references: [id])
+  uploadedBy       User              @relation("UploadedDocuments", fields: [uploadedById], references: [id])
+  accessGrants     AccessGrant[]
+  auditLogs        AuditLog[]
+  aiAccessRequests AiAccessRequest[]
+  messageAttachments SecureMessageAttachment[]
+
+  @@index([departmentId])
+  @@index([uploadedById])
+  @@index([classification])
+  @@index([discoverability])
+}
+
+model AccessGrant {
+  id          String    @id @default(uuid())
+  userId      String
+  documentId  String
+  status      String    @default("active") // active | revoked | expired
+  grantedById String
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  reason      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user      User     @relation("UserGrants", fields: [userId], references: [id])
+  document  Document @relation(fields: [documentId], references: [id])
+  grantedBy User     @relation("GrantedByGrants", fields: [grantedById], references: [id])
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  documentId String?
+  action     String   // upload | download | view | grant_access | revoke_access | login | logout
+  decision   String?  // allowed | denied | pending
+  reason     String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   String?  // JSON string for additional data
+  timestamp  DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  document Document? @relation(fields: [documentId], references: [id])
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([action])
+  @@index([timestamp])
+}
+
+model AiAccessRequest {
+  id           String    @id @default(uuid())
+  userId       String
+  documentId   String
+  status       String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  requestedAt  DateTime  @default(now())
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewReason String?
+
+  user       User     @relation("UserAiRequests", fields: [userId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  reviewedBy User?    @relation("ReviewedAiRequests", fields: [reviewedById], references: [id])
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([status])
+}
+
+model AiChatSession {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String   @default("Campus Document Inquiry")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiChatMessage[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model AiChatMessage {
+  id             String   @id @default(uuid())
+  sessionId      String
+  userId         String
+  messageRole    String   // user | assistant | system
+  messageContent String
+  createdAt      DateTime @default(now())
+
+  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SecureMessage {
+  id             String                    @id @default(uuid())
+  senderId       String
+  recipientId    String
+  messageType    String                    @default("direct") // direct | document_share | access_request
+  subject        String
+  messageContent String
+  status         String                    @default("SENT") // PENDING_CONFIRMATION | SENT | DELIVERED | READ | FAILED | REJECTED
+  createdAt      DateTime                  @default(now())
+  readAt         DateTime?
+
+  sender         User                      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient      User                      @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  attachments    SecureMessageAttachment[]
+  notifications  Notification[]
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SecureMessageAttachment {
+  id         String   @id @default(uuid())
+  messageId  String
+  documentId String
+  createdAt  DateTime @default(now())
+
+  message    SecureMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  document   Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([documentId])
+}
+
+model Notification {
+  id               String         @id @default(uuid())
+  userId           String
+  type             String         @default("message") // message | document_share | access_request | system
+  title            String
+  message          String
+  relatedMessageId String?
+  isRead           Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  relatedMessage   SecureMessage? @relation(fields: [relatedMessageId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
