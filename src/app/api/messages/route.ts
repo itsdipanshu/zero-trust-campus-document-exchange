@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import { createSecureMessage, getUserMessages } from "@/lib/messages/service";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/messages - Retrieve user's private inbox and sent messages
 export async function GET() {
   try {

@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { downloadMessageAttachment } from "@/lib/messages/service";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/messages/[id]/attachment/[attachmentId]/download
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string; attachmentId: string }> }
+  { params }: { params: { id: string; attachmentId: string } | Promise<{ id: string; attachmentId: string }> }
 ) {
   try {
     const user = await getCurrentUser();

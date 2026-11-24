@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import prisma from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/ai/sessions - List chat sessions for authenticated user
 export async function GET() {
   try {

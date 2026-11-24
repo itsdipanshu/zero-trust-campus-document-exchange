@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/ai/gemini-status - Reports Gemini integration status without revealing keys
 export async function GET(request: NextRequest) {
   try {

@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import prisma from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/notifications - List user's notifications + unread count
 export async function GET() {
   try {

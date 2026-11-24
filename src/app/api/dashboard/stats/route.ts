@@ -2,6 +2,8 @@ import prisma from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/dashboard/stats - Real database metrics tailored by role
 export async function GET() {
   try {

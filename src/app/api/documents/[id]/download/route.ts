@@ -13,10 +13,12 @@ import {
 import { readFile } from "fs/promises";
 import path from "path";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/documents/[id]/download - Download document (protected by Zero-Trust + AES-256-GCM)
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
     const currentUser = await getCurrentUser();

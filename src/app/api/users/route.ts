@@ -3,6 +3,8 @@ import prisma from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/users - List users (admin/hod only)
 export async function GET(request: NextRequest) {
   try {

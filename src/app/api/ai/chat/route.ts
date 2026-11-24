@@ -4,6 +4,8 @@ import { successResponse, errorResponse } from "@/lib/utils";
 import { processAiMessage } from "@/lib/ai/engine";
 import prisma from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // POST /api/ai/chat - Process user message in strictly authenticated user context
 export async function POST(request: NextRequest) {
   try {

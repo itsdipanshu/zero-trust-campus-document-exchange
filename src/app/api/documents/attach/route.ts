@@ -7,6 +7,8 @@ import { encryptDocument } from "@/lib/crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
+export const dynamic = "force-dynamic";
+
 // POST /api/documents/attach - Upload and encrypt a document to attach to a message
 export async function POST(request: NextRequest) {
   try {

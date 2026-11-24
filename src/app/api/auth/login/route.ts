@@ -5,6 +5,8 @@ import { successResponse, errorResponse } from "@/lib/utils";
 import { logAuditEvent } from "@/lib/audit";
 import { onSecurityEvent } from "@/lib/security/authorization";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

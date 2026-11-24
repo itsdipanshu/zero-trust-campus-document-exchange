@@ -7,6 +7,8 @@ import { encryptDocument } from "@/lib/crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/documents - List documents with strict role-based visibility
 export async function GET(request: NextRequest) {
   try {

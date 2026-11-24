@@ -10,10 +10,12 @@ import {
   type SecurityGrant,
 } from "@/lib/security/authorization";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/documents/[id] - Get document details (protected)
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
     const currentUser = await getCurrentUser();

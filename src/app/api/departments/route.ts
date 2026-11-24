@@ -3,6 +3,8 @@ import prisma from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/departments - List all departments (accessible publicly for signup and for dashboard)
 export async function GET() {
   try {

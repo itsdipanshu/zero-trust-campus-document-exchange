@@ -9,7 +9,10 @@ if (envCheck.warnings.length > 0) {
 if (!envCheck.valid) {
   console.error("[CAMPUSVAULT CONFIGURATION ERROR] Environment validation failed:");
   envCheck.errors.forEach((e) => console.error(`  - ${e}`));
-  if (process.env.NODE_ENV === "production") {
+  
+  // In Next.js static build phase (e.g. on Vercel collecting page data), warn rather than crash
+  const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+  if (process.env.NODE_ENV === "production" && !isBuildPhase) {
     throw new Error("[CAMPUSVAULT FATAL] Cannot start in production with invalid environment variables.");
   }
 }

@@ -3,10 +3,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import { getMessageDetails } from "@/lib/messages/service";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/messages/[id] - View specific message details
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
     const user = await getCurrentUser();

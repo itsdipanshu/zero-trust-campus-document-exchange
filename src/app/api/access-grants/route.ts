@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import { logAuditEvent } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/access-grants - List grants with role-based visibility
 export async function GET(request: NextRequest) {
   try {
