@@ -2,10 +2,11 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * ============================================================
- * CAMPUSVAULT – SUPABASE INTEGRATION CLIENT
+ * CAMPUSVAULT – SUPABASE INTEGRATION CLIENT (AUTH & DATABASE)
  * ============================================================
  * Official Supabase Client with:
- * - Secure Server-Side access patterns
+ * - Supabase Auth (Sign In, Sign Up, Session Verification)
+ * - PostgreSQL Cloud Database integration
  * - Dual persistence with Zero-Trust Security Engine
  * - RLS policy alignment
  * - Service-role key protection (NEVER exposed to browser)
@@ -15,17 +16,17 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.SUPABASE_URL ||
-  "https://campusvault-project.supabase.co";
+  "https://cxaxxdxicgybwqmufemf.supabase.co";
 
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.campusvault-anon-placeholder";
+  "sb_publishable_yJpV2wZW_UJsqaDtgFyNww_l32pPkUr";
 
 const supabaseServiceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SERVICE_KEY ||
-  "";
+  supabaseAnonKey;
 
 /**
  * Public client for client-side or anonymous requests (uses Anon Key).
@@ -60,6 +61,43 @@ export function isSupabaseConfigured(): boolean {
     !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
     !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")
   );
+}
+
+/**
+ * Supabase Auth: Register new user
+ */
+export async function supabaseSignUp(email: string, password: string, metadata?: Record<string, any>) {
+  if (!isSupabaseConfigured()) return { user: null, session: null, error: null };
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: metadata || {},
+      },
+    });
+    return { user: data.user, session: data.session, error: error?.message || null };
+  } catch (err: any) {
+    console.warn("[SUPABASE AUTH] Sign-up exception:", err?.message || err);
+    return { user: null, session: null, error: err?.message || "Auth failed" };
+  }
+}
+
+/**
+ * Supabase Auth: Sign in existing user
+ */
+export async function supabaseSignIn(email: string, password: string) {
+  if (!isSupabaseConfigured()) return { user: null, session: null, error: null };
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { user: data.user, session: data.session, error: error?.message || null };
+  } catch (err: any) {
+    console.warn("[SUPABASE AUTH] Sign-in exception:", err?.message || err);
+    return { user: null, session: null, error: err?.message || "Auth failed" };
+  }
 }
 
 /**

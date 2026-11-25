@@ -3,6 +3,7 @@ import prisma from "@/lib/db";
 import { hashPassword, generateToken } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import { logAuditEvent } from "@/lib/audit";
+import { supabaseSignUp, syncUserProfileToSupabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,25 @@ export async function POST(request: NextRequest) {
       },
       include: { department: true },
     });
+
+    // Dual-Auth Sync: Register user in Supabase Auth & Cloud Profiles
+    try {
+      await supabaseSignUp(cleanEmail, password, {
+        name: user.name,
+        role: user.role,
+        departmentId: user.departmentId,
+      });
+      await syncUserProfileToSupabase({
+        id: user.id,
+        fullName: user.name,
+        email: user.email,
+        role: user.role,
+        departmentId: user.departmentId,
+        status: user.status,
+      });
+    } catch (sbErr) {
+      console.warn("[SUPABASE AUTH REGISTRATION]", sbErr);
+    }
 
     // Generate JWT token with confirmed departmentId
     const token = generateToken({

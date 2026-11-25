@@ -4,6 +4,7 @@ import { verifyPassword, generateToken } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import { logAuditEvent } from "@/lib/audit";
 import { onSecurityEvent } from "@/lib/security/authorization";
+import { supabaseSignIn } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -42,13 +43,20 @@ export async function POST(request: NextRequest) {
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
-      await onSecurityEvent({
-        type: "login_failed",
-        userId: user.id,
-        details: { reason: "Invalid password" },
-        timestamp: new Date(),
-      });
-      return errorResponse("Invalid credentials", 401);
+      // Check if user was registered directly via Supabase Auth
+      const sbResult = await supabaseSignIn(email, password);
+      if (!sbResult.user) {
+        await onSecurityEvent({
+          type: "login_failed",
+          userId: user.id,
+          details: { reason: "Invalid password" },
+          timestamp: new Date(),
+        });
+        return errorResponse("Invalid credentials", 401);
+      }
+    } else {
+      // Keep Supabase Auth session in sync
+      supabaseSignIn(email, password).catch(() => {});
     }
 
     const token = generateToken({
