@@ -69,7 +69,7 @@
 - **Executed via:** `npx ts-node tests/verifyEnvironmentAndSecrets.ts`
 - **Output:** 12 passed, 0 failed.
 - **Key Scenarios Verified:**
-  - DATABASE_URL matches Prisma SQLite provider (`file:./dev.db`).
+  - DATABASE_URL matches Prisma schema provider architecture.
   - Master key format: Exactly 64 hexadecimal characters yielding 32 raw bytes.
   - Missing secret handling: Graceful, descriptive error on missing encryption keys.
   - Production mode: Default development secrets blocked in production.

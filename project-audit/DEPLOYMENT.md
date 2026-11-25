@@ -11,13 +11,13 @@ CampusVault requires four core server-side environment variables defined in `.en
 
 | Variable Name | Required | Example Format | Purpose |
 |---|:---:|---|---|
-| `DATABASE_URL` | **Yes** | `file:./dev.db` | Datasource connection string for Prisma ORM. |
-| `JWT_SECRET` | **Yes** | 64+ character random string | Secret key used to sign and verify HMAC-SHA256 session tokens. |
-| `DOCUMENT_ENCRYPTION_KEY` | **Yes** | 64-character hexadecimal string | 256-bit AES-GCM master key used for document envelope encryption at rest. |
-| `GEMINI_API_KEY` | **Yes** | `AIzaSy...` | Google Cloud Gemini API key for Vault AI Assistant intelligence. |
-| `NEXT_PUBLIC_SUPABASE_URL` | *Optional* | `https://xyz.supabase.co` | Supabase Cloud API URL for production deployment. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Optional* | `eyJhbG...` | Supabase public anonymous client key. |
-| `SUPABASE_SERVICE_ROLE_KEY` | *Optional* | `eyJhbG...` | Supabase server-side service role key for administrative tasks. |
+| `DATABASE_URL` | **Yes** | `<DATABASE_CONNECTION_URI>` | Datasource connection string for Prisma ORM (SQLite for local dev, PostgreSQL for cloud production). |
+| `JWT_SECRET` | **Yes** | `<64_HEX_OR_RANDOM_SECRET>` | Secret key used to sign and verify HMAC-SHA256 session tokens. |
+| `DOCUMENT_ENCRYPTION_KEY` | **Yes** | `<64_HEX_AES256_GCM_KEY>` | 256-bit AES-GCM master key used for document envelope encryption at rest. |
+| `GEMINI_API_KEY` | **Yes** | `<YOUR_GEMINI_API_KEY>` | Google Cloud Gemini API key for Vault AI Assistant intelligence. |
+| `NEXT_PUBLIC_SUPABASE_URL` | *Optional* | `https://<project-ref>.supabase.co` | Supabase Cloud API URL for production deployment. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Optional* | `<SUPABASE_ANON_KEY>` | Supabase public anonymous client key. |
+| `SUPABASE_SERVICE_ROLE_KEY` | *Optional* | `<SUPABASE_SERVICE_ROLE_KEY>` | Supabase server-side service role key for administrative tasks. |
 
 > **IMPORTANT:** In production mode (`NODE_ENV=production`), the application strictly blocks default fallback development secrets and halts with a descriptive error if any required secret is missing or insecure.
 

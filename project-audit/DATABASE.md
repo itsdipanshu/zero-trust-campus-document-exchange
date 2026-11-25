@@ -10,7 +10,7 @@
 
 An exhaustive code and connection string audit confirms:
 - **Active Engine:** **SQLite**
-- **Datasource URL:** `DATABASE_URL="file:./dev.db"` (`prisma/schema.prisma`)
+- **Datasource URL:** Dynamic datasource via `DATABASE_URL` (SQLite for local dev, PostgreSQL for cloud production)
 - **Connection Client:** `new PrismaClient()` in `src/lib/db.ts`
 - **Cloud Migration Schema:** Complete PostgreSQL schema with Row Level Security (RLS) provided in `supabase/schema.sql` for hybrid or cloud deployments.
 

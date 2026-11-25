@@ -52,7 +52,7 @@ async function runEnvAndSecurityAudit() {
     3,
     "DATABASE_URL Architecture Match",
     usesSqlite && prismaProviderIsSqlite,
-    `Prisma provider 'sqlite' matches DATABASE_URL 'file:./dev.db'`
+    `Prisma provider 'sqlite' matches local SQLite configuration`
   );
 
   // 4. JWT_SECRET Usage & Session Token Security

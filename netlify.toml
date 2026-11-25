@@ -1,0 +1,25 @@
+# ============================================================
+# CAMPUSVAULT – NETLIFY DEPLOYMENT & SECRETS SCANNING CONFIG
+# ============================================================
+# Enforces strict security standards while eliminating false-positive
+# detections on standard non-sensitive configuration identifiers.
+# ============================================================
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  # Narrowly scoped omission for non-sensitive configuration keys:
+  # - NODE_ENV: Standard environment flag ('production' / 'development')
+  # - PORT: Networking port number ('3000')
+  # - GEMINI_MODEL: Public AI model identifier ('gemini-2.5-flash')
+  #
+  # CRITICAL SECURITY NOTE:
+  # Sensitive credentials remain fully protected and actively scanned:
+  # - DATABASE_URL: Protected
+  # - JWT_SECRET: Protected
+  # - DOCUMENT_ENCRYPTION_KEY: Protected
+  # - GEMINI_API_KEY: Protected
+  # - SUPABASE_SERVICE_ROLE_KEY: Protected
+  SECRETS_SCAN_OMIT_KEYS = "NODE_ENV,PORT,GEMINI_MODEL"
