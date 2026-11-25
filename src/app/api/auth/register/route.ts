@@ -33,7 +33,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate that the selected department actually exists in the database
-    const department = await prisma.department.findUnique({ where: { id: departmentId } });
+    let department = await prisma.department.findUnique({ where: { id: departmentId } });
+    if (!department) {
+      // Gracefully resolve if submitted via fallback identifier
+      const fallbackList = [
+        { name: "Computer Science", description: "Department of Computer Science and Engineering" },
+        { name: "Information Technology", description: "Department of Information Technology" },
+        { name: "Electronics and Communication", description: "Department of Electronics and Communication Engineering" },
+        { name: "Mechanical Engineering", description: "Department of Mechanical Engineering" },
+        { name: "Civil Engineering", description: "Department of Civil Engineering" },
+        { name: "Business Administration", description: "Department of Business Administration and Management" },
+        { name: "Applied Sciences", description: "Department of Applied Sciences and Humanities" },
+        { name: "Administration", description: "Campus Administration and System Governance" },
+      ];
+      const match = fallbackList.find(
+        (d, idx) => `dept-fallback-0${idx + 1}` === departmentId || d.name.toLowerCase() === departmentId.toLowerCase()
+      );
+      if (match) {
+        department = await prisma.department.upsert({
+          where: { name: match.name },
+          update: {},
+          create: match,
+        });
+      }
+    }
+
     if (!department) {
       return errorResponse("Invalid department selected. Please choose a valid campus department.", 400);
     }
