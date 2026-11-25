@@ -35,6 +35,11 @@ model User {
   sentMessages       SecureMessage[]   @relation("SentMessages")
   receivedMessages   SecureMessage[]   @relation("ReceivedMessages")
   notifications      Notification[]
+  receivedAccessCodes DocumentAccessCode[]   @relation("RecipientAccessCodes")
+  createdAccessCodes  DocumentAccessCode[]   @relation("CreatedAccessCodes")
+  requestedTickets    DocumentAccessTicket[] @relation("RequesterTickets")
+  ownedTickets        DocumentAccessTicket[] @relation("OwnerTickets")
+  reviewedTickets     DocumentAccessTicket[] @relation("ReviewedTickets")
 
   @@index([email])
   @@index([departmentId])
@@ -72,6 +77,8 @@ model Document {
   auditLogs        AuditLog[]
   aiAccessRequests AiAccessRequest[]
   messageAttachments SecureMessageAttachment[]
+  accessCodes      DocumentAccessCode[]
+  accessTickets    DocumentAccessTicket[]
 
   @@index([departmentId])
   @@index([uploadedById])
@@ -222,3 +229,56 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
 }
+
+model DocumentAccessCode {
+  id              String    @id @default(uuid())
+  documentId      String
+  recipientUserId String
+  createdById     String
+  codeHash        String    @unique
+  status          String    @default("ACTIVE") // ACTIVE | USED | EXPIRED | REVOKED
+  expiresAt       DateTime
+  usedAt          DateTime?
+  ticketId        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  document        Document              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  recipient       User                  @relation("RecipientAccessCodes", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  createdBy       User                  @relation("CreatedAccessCodes", fields: [createdById], references: [id], onDelete: Cascade)
+  ticket          DocumentAccessTicket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  @@index([recipientUserId])
+  @@index([documentId])
+  @@index([codeHash])
+  @@index([status])
+}
+
+model DocumentAccessTicket {
+  id              String    @id @default(uuid())
+  ticketId        String    @unique // e.g. CVLT-REQ-2026-000123
+  documentId      String
+  requesterId     String
+  documentOwnerId String
+  reason          String    // Mandatory explanation from user
+  status          String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | EXPIRED
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  document        Document             @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  requester       User                 @relation("RequesterTickets", fields: [requesterId], references: [id], onDelete: Cascade)
+  documentOwner   User                 @relation("OwnerTickets", fields: [documentOwnerId], references: [id], onDelete: Cascade)
+  reviewedBy      User?                @relation("ReviewedTickets", fields: [reviewedById], references: [id])
+  accessCodes     DocumentAccessCode[]
+
+  @@index([ticketId])
+  @@index([documentId])
+  @@index([requesterId])
+  @@index([documentOwnerId])
+  @@index([status])
+  @@index([createdAt])
+}
+

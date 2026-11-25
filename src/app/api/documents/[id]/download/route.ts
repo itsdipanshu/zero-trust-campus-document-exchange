@@ -33,6 +33,26 @@ export async function GET(
     if (!document) return errorResponse("Document not found", 404);
 
     // ================================================================
+    // STEP 0: ONE-TIME ACCESS CODE CONSUMPTION (IF PROVIDED)
+    // ================================================================
+    const providedCode =
+      request.nextUrl.searchParams.get("code") ||
+      request.nextUrl.searchParams.get("accessCode");
+    if (providedCode) {
+      const { redeemOneTimeAccessCode } = await import("@/lib/security/accessCodes");
+      const redeemResult = await redeemOneTimeAccessCode({
+        code: providedCode,
+        userId: currentUser.id,
+        documentId: id,
+        ipAddress: request.headers.get("x-forwarded-for") || "unknown",
+        userAgent: request.headers.get("user-agent") || "unknown",
+      });
+      if (!redeemResult.success) {
+        return errorResponse(redeemResult.error || "Access code validation failed", redeemResult.statusCode || 403);
+      }
+    }
+
+    // ================================================================
     // STEP 1: ZERO-TRUST AUTHORIZATION PIPELINE
     // "Never Trust, Always Verify" – Every request evaluated at request time.
     // Fetch the most recent grant for this user & document.

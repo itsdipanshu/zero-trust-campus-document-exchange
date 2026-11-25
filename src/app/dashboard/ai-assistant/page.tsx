@@ -86,6 +86,26 @@ interface Message {
     documentTitle?: string;
     documentClassification?: string;
   };
+  ticketAction?: {
+    type: "CONFIRM_TICKET";
+    documentId: string;
+    documentTitle: string;
+    documentOwnerName: string;
+    requesterName: string;
+    requesterRole: string;
+    departmentName: string;
+    reason: string;
+  };
+  ticketList?: {
+    ticketId: string;
+    documentTitle: string;
+    documentOwner: string;
+    status: string;
+    reason: string;
+    rejectionReason?: string;
+    accessCode?: string;
+    createdAt: string;
+  }[];
   receivedMessages?: ReceivedMessageCard[];
 }
 
@@ -456,6 +476,8 @@ export default function AiAssistantPage() {
             content: data.data.message,
             suggestedAction: data.data.suggestedAction,
             messengerAction: data.data.messengerAction,
+            ticketAction: data.data.ticketAction,
+            ticketList: data.data.ticketList,
             receivedMessages: data.data.receivedMessages,
             createdAt: new Date().toISOString(),
           };
@@ -1015,6 +1037,98 @@ export default function AiAssistantPage() {
                             </button>
                           </div>
                         )}
+
+                      {/* In-Chat Re-Access Ticket Confirmation Card */}
+                      {m.ticketAction &&
+                        m.ticketAction.type === "CONFIRM_TICKET" && (
+                          <div className="p-3.5 rounded-xl bg-[#FAF9F6] border border-[#ECD5BA] space-y-2.5 mt-2 shadow-sm animate-fade-in">
+                            <div className="flex items-center justify-between text-[#845627] font-semibold">
+                              <span className="flex items-center gap-1.5 text-xs">
+                                <KeyRound className="w-3.5 h-3.5 text-[#C18B52]" />
+                                Re-Access Ticket Confirmation
+                              </span>
+                              <span className="text-[10px] bg-[#F6ECE0] text-[#845627] border border-[#ECD5BA] px-2 py-0.5 rounded font-medium">
+                                Zero-Trust Ticket
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-[#202923] space-y-1.5 bg-white p-2.5 rounded-lg border border-[#ECD5BA]/60">
+                              <p>
+                                • Document:{" "}
+                                <strong className="text-[#202923]">
+                                  {m.ticketAction.documentTitle}
+                                </strong>
+                              </p>
+                              <p>
+                                • Document Owner:{" "}
+                                <strong className="text-[#202923]">
+                                  {m.ticketAction.documentOwnerName}
+                                </strong>
+                              </p>
+                              <p>
+                                • Requester:{" "}
+                                <strong className="text-[#202923]">
+                                  {m.ticketAction.requesterName}
+                                </strong>{" "}
+                                ({m.ticketAction.requesterRole.toUpperCase()} - {m.ticketAction.departmentName})
+                              </p>
+                              <div className="pt-1 border-t border-[#ECD5BA]/40">
+                                <span className="text-[10px] text-[#845627] font-semibold uppercase block">Mandatory Reason:</span>
+                                <p className="italic text-[#202923] mt-0.5">
+                                  &quot;{m.ticketAction.reason}&quot;
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleSendMessage("Confirm")}
+                              disabled={loading}
+                              className="btn-primary w-full py-2 text-xs flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span>Confirm & Submit Re-Access Request</span>
+                            </button>
+                          </div>
+                        )}
+
+                      {/* In-Chat Re-Access Ticket Status List */}
+                      {m.ticketList && m.ticketList.length > 0 && (
+                        <div className="p-3 rounded-xl bg-[#F4F3EE] border border-[#D9DED8] space-y-2 mt-2">
+                          <p className="text-[11px] font-semibold text-[#477B70] flex items-center gap-1.5">
+                            <KeyRound className="w-3.5 h-3.5" />
+                            Your Re-Access Request Tickets:
+                          </p>
+                          {m.ticketList.map((t) => (
+                            <div
+                              key={t.ticketId}
+                              className="p-2.5 rounded-lg bg-white border border-[#D9DED8] text-xs space-y-1"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold text-[#202923]">
+                                  {t.ticketId} – {t.documentTitle}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold ${
+                                    t.status === "APPROVED"
+                                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                      : t.status === "REJECTED"
+                                      ? "bg-rose-100 text-rose-800 border border-rose-300"
+                                      : "bg-amber-100 text-amber-800 border border-amber-300"
+                                  }`}
+                                >
+                                  {t.status}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-[#68736B]">
+                                Owner: {t.documentOwner} • Reason: &quot;{t.reason}&quot;
+                              </p>
+                              {t.rejectionReason && (
+                                <p className="text-[10px] text-rose-700 italic">
+                                  Rejection: {t.rejectionReason}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

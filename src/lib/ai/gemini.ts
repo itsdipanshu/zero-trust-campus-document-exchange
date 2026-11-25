@@ -88,6 +88,32 @@ const tools: FunctionDeclaration[] = [
       required: ["recipientIdentifier"],
     },
   },
+  {
+    name: "requestDocumentReAccess",
+    description: "Requests re-access to a previously accessed campus document with a mandatory user reason. If user hasn't provided a reason, you must ask: 'Why do you need access to this document again? Please explain your reason.'",
+    parameters: {
+      type: "OBJECT" as any,
+      properties: {
+        documentTitle: {
+          type: "STRING" as any,
+          description: "Title of the document to request re-access for",
+        },
+        reason: {
+          type: "STRING" as any,
+          description: "Mandatory non-empty explanation of why user needs re-access again",
+        },
+      },
+      required: ["documentTitle"],
+    },
+  },
+  {
+    name: "checkReAccessTickets",
+    description: "Checks the status of the user's document re-access request tickets and any active one-time access codes issued.",
+    parameters: {
+      type: "OBJECT" as any,
+      properties: {},
+    },
+  },
 ];
 
 /**
@@ -342,6 +368,101 @@ async function executeGeminiTool(
       };
     }
 
+    case "requestDocumentReAccess": {
+      const docQuery = (args.documentTitle || "").toLowerCase();
+      const reason = (args.reason || "").trim();
+
+      const matchedDoc = await prisma.document.findFirst({
+        where: { title: { contains: docQuery } },
+        include: { uploadedBy: true, department: true },
+      });
+
+      if (!matchedDoc) {
+        return {
+          toolResult: {
+            success: false,
+            message: `Document matching '${args.documentTitle}' was not found.`,
+          },
+        };
+      }
+
+      if (!reason || reason.length === 0) {
+        return {
+          toolResult: {
+            success: false,
+            needReason: true,
+            promptQuestion: "Why do you need access to this document again? Please explain your reason.",
+            documentTitle: matchedDoc.title,
+            documentId: matchedDoc.id,
+          },
+        };
+      }
+
+      const ownerName = matchedDoc.uploadedBy?.name || "Document Owner";
+      const userDept = user.department?.name || matchedDoc.department?.name || "Campus";
+
+      const ticketAction: ChatResponse["ticketAction"] = {
+        type: "CONFIRM_TICKET",
+        documentId: matchedDoc.id,
+        documentTitle: matchedDoc.title,
+        documentOwnerName: ownerName,
+        requesterName: user.name,
+        requesterRole: user.role,
+        departmentName: userDept,
+        reason,
+      };
+
+      return {
+        toolResult: {
+          success: true,
+          status: "AWAITING_CONFIRMATION",
+          documentTitle: matchedDoc.title,
+          documentOwner: ownerName,
+          requester: user.name,
+          reason,
+          message: "Access request prepared. Confirmation is required from user.",
+        },
+        chatResponsePartial: {
+          ticketAction,
+        },
+      };
+    }
+
+    case "checkReAccessTickets": {
+      const tickets = await prisma.documentAccessTicket.findMany({
+        where: { requesterId: user.id },
+        orderBy: { createdAt: "desc" },
+        include: { document: true, documentOwner: true },
+        take: 5,
+      });
+
+      return {
+        toolResult: {
+          count: tickets.length,
+          tickets: tickets.map((t) => ({
+            ticketId: t.ticketId,
+            document: t.document.title,
+            owner: t.documentOwner.name,
+            status: t.status,
+            reason: t.reason,
+            rejectionReason: t.rejectionReason,
+            createdAt: t.createdAt,
+          })),
+        },
+        chatResponsePartial: {
+          ticketList: tickets.map((t) => ({
+            ticketId: t.ticketId,
+            documentTitle: t.document.title,
+            documentOwner: t.documentOwner.name,
+            status: t.status,
+            reason: t.reason,
+            rejectionReason: t.rejectionReason || undefined,
+            createdAt: t.createdAt.toISOString(),
+          })),
+        },
+      };
+    }
+
     default:
       return { toolResult: { error: `Unknown tool: ${name}` } };
   }
@@ -392,6 +513,8 @@ SECURITY & PRIVACY RULES:
 5. For checking pending requests, call 'checkPendingAccessRequests'.
 6. For status of specific documents, call 'checkDocumentAccessStatus'.
 7. For received messages or who sent documents, call 'showReceivedMessages'.
+8. MANDATORY REASON RULE: If a user asks for re-access to a document (e.g. 'I need X again' or 'raise ticket'), you MUST ask: 'Why do you need access to this document again? Please explain your reason.' A non-empty reason is strictly required before any ticket can be created. Never submit or invent a reason yourself.
+9. For re-access requests and ticket status inquiries, call 'requestDocumentReAccess' and 'checkReAccessTickets'.
 
 LANGUAGE GUIDELINE:
 ${languageInstruction}

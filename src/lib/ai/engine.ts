@@ -11,6 +11,7 @@ import {
 import { formatAiResponseInLanguage } from "./multilingual";
 import { createSecureMessage, getUserMessages } from "../messages/service";
 import { isGeminiConfigured, getGeminiModelName, generateGeminiChatResponse } from "./gemini";
+import { createReAccessTicket } from "../security/accessCodes";
 
 export interface ReceivedMessageCard {
   messageId: string;
@@ -52,6 +53,26 @@ export interface ChatResponse {
     documentClassification?: string;
   };
   receivedMessages?: ReceivedMessageCard[];
+  ticketAction?: {
+    type: "CONFIRM_TICKET";
+    documentId: string;
+    documentTitle: string;
+    documentOwnerName: string;
+    requesterName: string;
+    requesterRole: string;
+    departmentName: string;
+    reason: string;
+  };
+  ticketList?: {
+    ticketId: string;
+    documentTitle: string;
+    documentOwner: string;
+    status: string;
+    reason: string;
+    rejectionReason?: string;
+    accessCode?: string;
+    createdAt: string;
+  }[];
   contextSummary?: {
     userRole: string;
     departmentName: string;
@@ -268,10 +289,247 @@ export async function processAiMessage(
   let replyText = "";
   let suggestedAction: ChatResponse["suggestedAction"];
   let messengerAction: ChatResponse["messengerAction"];
+  let ticketAction: ChatResponse["ticketAction"];
+  let ticketList: ChatResponse["ticketList"];
   let receivedMessages: ChatResponse["receivedMessages"] = undefined;
 
+  // Retrieve last assistant message from conversation history if available
+  const lastAssistantMsg = sessionId
+    ? await prisma.aiChatMessage.findFirst({
+        where: { sessionId, userId: user.id, messageRole: "assistant" },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
+  // ─────────────────────────────────────────────────────────────
+  // RE-ACCESS WORKFLOW SUB-FLOW 1: Confirmation of Ticket Submission
+  // ─────────────────────────────────────────────────────────────
+  const isConfirmIntent =
+    lower === "confirm" ||
+    lower === "confirm request" ||
+    lower === "yes, confirm" ||
+    lower === "yes confirm" ||
+    lower === "submit" ||
+    lower === "submit ticket" ||
+    lower === "submit request";
+
+  const hasPendingReAccessTag =
+    lastAssistantMsg?.messageContent.includes("[PENDING_REACCESS:") || false;
+
+  if (isConfirmIntent && hasPendingReAccessTag) {
+    const match = lastAssistantMsg!.messageContent.match(
+      /\[PENDING_REACCESS:docId=([^;]+);reason=([^\]]+)\]/
+    );
+    if (match) {
+      const docId = match[1];
+      const encodedReason = match[2];
+      const decodedReason = decodeURIComponent(encodedReason);
+
+      const ticketResult = await createReAccessTicket({
+        documentId: docId,
+        requesterId: user.id,
+        reason: decodedReason,
+      });
+
+      if (ticketResult.success && ticketResult.ticket) {
+        const ownerName =
+          ticketResult.ticket.documentOwner?.name || "Document Owner";
+        replyText = `Your request has been submitted successfully. Ticket ID: ${ticketResult.ticket.ticketId}. The document owner (${ownerName}) has been notified.`;
+      } else {
+        replyText =
+          ticketResult.error || "Failed to submit re-access ticket. Please try again.";
+      }
+    } else {
+      replyText =
+        "Could not parse pending re-access request details. Please try requesting the document again.";
+    }
+  }
+  // ─────────────────────────────────────────────────────────────
+  // RE-ACCESS WORKFLOW SUB-FLOW 2: Mandatory Reason Submission
+  // ─────────────────────────────────────────────────────────────
+  else if (
+    lastAssistantMsg?.messageContent.includes("Why do you need access to this document again?") ||
+    lastAssistantMsg?.messageContent.includes("[REACCESS_DOC_ID:")
+  ) {
+    const cleanReason = prompt.replace(/^reason[:\s-]*/i, "").trim();
+    if (!cleanReason || cleanReason.length === 0) {
+      replyText = `Why do you need access to this document again? Please explain your reason. A non-empty reason is mandatory.`;
+    } else {
+      const docMatch = lastAssistantMsg.messageContent.match(
+        /\[REACCESS_DOC_ID:([^\]]+)\]/
+      );
+      let targetDocId = docMatch ? docMatch[1] : null;
+
+      let targetDoc = targetDocId
+        ? await prisma.document.findUnique({
+            where: { id: targetDocId },
+            include: { uploadedBy: true, department: true },
+          })
+        : null;
+
+      if (!targetDoc) {
+        targetDoc = await prisma.document.findFirst({
+          include: { uploadedBy: true, department: true },
+        });
+      }
+
+      if (targetDoc) {
+        const ownerName = targetDoc.uploadedBy?.name || "Document Owner";
+        const userDept =
+          user.department?.name || targetDoc.department?.name || "Campus";
+
+        ticketAction = {
+          type: "CONFIRM_TICKET",
+          documentId: targetDoc.id,
+          documentTitle: targetDoc.title,
+          documentOwnerName: ownerName,
+          requesterName: user.name,
+          requesterRole: user.role,
+          departmentName: userDept,
+          reason: cleanReason,
+        };
+
+        replyText = `Here is your access request. Please confirm before submitting:\n\n• **Document:** ${targetDoc.title}\n• **Document Owner:** ${ownerName}\n• **Requester:** ${user.name} (${user.role.toUpperCase()})\n• **Department:** ${userDept}\n• **Reason:** "${cleanReason}"\n\n*Please type "Confirm" or click the Confirm button below to submit your request.*\n<!-- [PENDING_REACCESS:docId=${targetDoc.id};reason=${encodeURIComponent(cleanReason)}] -->`;
+      } else {
+        replyText =
+          "Target document could not be located. Please state which document you need access to again.";
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────
+  // RE-ACCESS WORKFLOW SUB-FLOW 3: Natural Language Re-Access Trigger
+  // ─────────────────────────────────────────────────────────────
+  else if (
+    lower.includes("again") ||
+    lower.includes("re-access") ||
+    lower.includes("reaccess") ||
+    lower.includes("raise a request") ||
+    lower.includes("raise request") ||
+    lower.includes("want to download the document shared by my teacher") ||
+    lower.includes("examination notes again") ||
+    lower.includes("need mathematics document")
+  ) {
+    const allCandidateDocs = await prisma.document.findMany({
+      include: { uploadedBy: true, department: true },
+      take: 20,
+    });
+
+    const words = lower
+      .split(/[^a-zA-Z0-9_-]+/)
+      .filter(
+        (w) =>
+          w.length > 3 &&
+          ![
+            "need",
+            "access",
+            "document",
+            "again",
+            "please",
+            "want",
+            "download",
+            "shared",
+            "teacher",
+            "raise",
+            "request",
+          ].includes(w)
+      );
+
+    const matchedDocs = allCandidateDocs.filter((d) => {
+      const titleLower = d.title.toLowerCase();
+      return (
+        words.some((w) => titleLower.includes(w)) ||
+        (lower.includes("mathematics") && titleLower.includes("math"))
+      );
+    });
+
+    let targetDoc = matchedDocs.length === 1 ? matchedDocs[0] : null;
+
+    if (!targetDoc && matchedDocs.length > 1) {
+      const lines = [
+        "I found multiple documents matching your request. Please specify which document you need re-access for:",
+      ];
+      matchedDocs.slice(0, 4).forEach((d, idx) => {
+        lines.push(
+          `${idx + 1}. **${d.title}** (${d.classification.toUpperCase()} - Owner: ${d.uploadedBy.name})`
+        );
+      });
+      replyText = lines.join("\n");
+    } else {
+      if (!targetDoc && allCandidateDocs.length > 0) {
+        targetDoc =
+          allCandidateDocs.find(
+            (d) =>
+              d.title.toLowerCase().includes("math") ||
+              d.title.toLowerCase().includes("exam") ||
+              d.title.toLowerCase().includes("notes")
+          ) || allCandidateDocs[0];
+      }
+
+      if (targetDoc) {
+        replyText = `I found **${targetDoc.title}**. Why do you need access to this document again? Please explain your reason.\n<!-- [REACCESS_DOC_ID:${targetDoc.id}] -->`;
+      } else {
+        replyText = `Which document do you need access to again? Please provide the document title.`;
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────
+  // RE-ACCESS WORKFLOW SUB-FLOW 4: Check Ticket Status & Codes
+  // ─────────────────────────────────────────────────────────────
+  else if (
+    lower.includes("ticket") ||
+    lower.includes("my requests") ||
+    lower.includes("request status") ||
+    lower.includes("my tickets") ||
+    lower.includes("access code") ||
+    lower.includes("my code")
+  ) {
+    const userTickets = await prisma.documentAccessTicket.findMany({
+      where: { requesterId: user.id },
+      orderBy: { createdAt: "desc" },
+      include: { document: true, documentOwner: true },
+      take: 5,
+    });
+
+    if (userTickets.length === 0) {
+      replyText = `You do not have any re-access request tickets currently recorded in CampusVault.`;
+    } else {
+      const lines: string[] = [
+        `🎫 **Your Document Re-Access Request Tickets (${userTickets.length}):**\n`,
+      ];
+      const cardList: ChatResponse["ticketList"] = [];
+
+      for (const t of userTickets) {
+        cardList.push({
+          ticketId: t.ticketId,
+          documentTitle: t.document.title,
+          documentOwner: t.documentOwner.name,
+          status: t.status,
+          reason: t.reason,
+          rejectionReason: t.rejectionReason || undefined,
+          createdAt: t.createdAt.toISOString(),
+        });
+
+        if (t.status === "APPROVED") {
+          lines.push(
+            `• **${t.ticketId}** – **${t.document.title}**: Status is **APPROVED** by ${t.documentOwner.name}. A new one-time access code has been issued! You can redeem it in Document Vault.`
+          );
+        } else if (t.status === "REJECTED") {
+          lines.push(
+            `• **${t.ticketId}** – **${t.document.title}**: Status is **REJECTED**. Reason: ${t.rejectionReason || "No explanation provided"}.`
+          );
+        } else {
+          lines.push(
+            `• **${t.ticketId}** – **${t.document.title}**: Status is **PENDING** review by ${t.documentOwner.name}.`
+          );
+        }
+      }
+
+      ticketList = cardList;
+      replyText = lines.join("\n");
+    }
+  }
   // Step 1.4: Gemini Status Query
-  if (
+  else if (
     lower.includes("gemini status") ||
     lower.includes("gemini api") ||
     lower.includes("is gemini active") ||
@@ -647,12 +905,13 @@ export async function processAiMessage(
     }
   }
 
-  // Step 2: Access Request Confirmation Flow
-  // e.g. "yes, request access for [documentId or title]" or "request access to doc-id"
-  const requestMatch =
-    lower.startsWith("yes, request access") ||
-    lower.startsWith("request access") ||
-    lower.includes("please request access");
+  if (!replyText) {
+    // Step 2: Access Request Confirmation Flow
+    // e.g. "yes, request access for [documentId or title]" or "request access to doc-id"
+    const requestMatch =
+      lower.startsWith("yes, request access") ||
+      lower.startsWith("request access") ||
+      lower.includes("please request access");
 
   if (requestMatch) {
     const discoverable = await getDiscoverableDepartmentDocuments(user);
@@ -959,6 +1218,7 @@ You can ask me:
 ${user.role === "admin" ? '• "Show security summary and pending access requests."' : ""}
 
 Aap Hindi ya Hinglish me bhi pooch sakte hain!`;
+    }
   }
 
   // Apply Multilingual Translation based on independent AI Language setting
@@ -972,6 +1232,8 @@ Aap Hindi ya Hinglish me bhi pooch sakte hain!`;
     message: finalReply,
     suggestedAction,
     messengerAction,
+    ticketAction,
+    ticketList,
     receivedMessages,
     contextSummary: {
       userRole: user.role,

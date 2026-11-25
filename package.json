@@ -21,6 +21,8 @@
     "test:roles": "ts-node tests/verifyRolePermissionsAndSupabase.ts",
     "test:env": "ts-node tests/verifyEnvironmentAndSecrets.ts",
     "test:crypto": "ts-node tests/verifyCryptoSecurity.ts",
+    "test:tickets": "ts-node tests/verifyOneTimeCodeAndReAccessTickets.ts",
+    "test:reaccess-chat": "ts-node tests/verifyAiReAccessChatFlow.ts",
     "test:engine": "npm test --prefix security-engine",
     "test:all": "npm test && npm run test:engine"
   },

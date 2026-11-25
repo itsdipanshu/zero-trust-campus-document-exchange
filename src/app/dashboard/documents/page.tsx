@@ -17,6 +17,8 @@ import {
   File,
   ShieldAlert,
   Lock,
+  KeyRound,
+  Copy,
 } from "lucide-react";
 
 interface Department {
@@ -77,6 +79,24 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
   const [page, setPage] = useState(1);
+
+  // One-Time Access Code States
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [redeemCode, setRedeemCode] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+
+  const [showReleaseModal, setShowReleaseModal] = useState(false);
+  const [releaseDoc, setReleaseDoc] = useState<Document | null>(null);
+  const [recipientUserId, setRecipientUserId] = useState("");
+  const [expiryHours, setExpiryHours] = useState(24);
+  const [releasing, setReleasing] = useState(false);
+  const [issuedCode, setIssuedCode] = useState<{
+    code: string;
+    expiresAt?: string;
+  } | null>(null);
+  const [campusUsers, setCampusUsers] = useState<
+    Array<{ id: string; name: string; email: string; role: string }>
+  >([]);
 
   // Load current user profile for role enforcement
   useEffect(() => {
@@ -234,6 +254,103 @@ export default function DocumentsPage() {
     }
   };
 
+  const handleOpenReleaseModal = async (doc: Document) => {
+    setReleaseDoc(doc);
+    setIssuedCode(null);
+    setRecipientUserId("");
+    setShowReleaseModal(true);
+    try {
+      const res = await fetch("/api/users?limit=100");
+      const data = await res.json();
+      if (data.success && data.data?.users) {
+        setCampusUsers(
+          data.data.users.filter((u: any) => u.id !== currentUser?.id)
+        );
+      }
+    } catch {}
+  };
+
+  const handleReleaseCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!releaseDoc || !recipientUserId) return;
+    setReleasing(true);
+    try {
+      const res = await fetch("/api/documents/release-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId: releaseDoc.id,
+          recipientUserId,
+          expiresAtHours: Number(expiryHours) || 24,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.data?.code) {
+        setIssuedCode({
+          code: data.data.code,
+          expiresAt: data.data.expiresAt,
+        });
+        setMessage({
+          type: "success",
+          text: `One-Time Access Code successfully generated for recipient!`,
+        });
+      } else {
+        setMessage({
+          type: "error",
+          text: data.error || "Failed to issue access code",
+        });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Network error releasing code" });
+    } finally {
+      setReleasing(false);
+    }
+  };
+
+  const handleRedeemCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!redeemCode.trim()) return;
+    setRedeeming(true);
+    try {
+      const res = await fetch("/api/documents/redeem-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: redeemCode.trim() }),
+      });
+      const data = await res.json();
+      if (data.success && data.data?.downloadUrl) {
+        setMessage({
+          type: "success",
+          text: `One-time code redeemed successfully! Downloading '${data.data.document.title}'...`,
+        });
+        setShowRedeemModal(false);
+        setRedeemCode("");
+        const dlRes = await fetch(data.data.downloadUrl);
+        if (dlRes.ok) {
+          const blob = await dlRes.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = data.data.document.fileName;
+          a.click();
+          window.URL.revokeObjectURL(url);
+        }
+      } else {
+        setMessage({
+          type: "error",
+          text: data.error || "Failed to redeem code",
+        });
+      }
+    } catch {
+      setMessage({
+        type: "error",
+        text: "Network error redeeming access code",
+      });
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
   const viewDetail = async (id: string) => {
     setShowDetail(id);
     try {
@@ -279,16 +396,27 @@ export default function DocumentsPage() {
           </p>
         </div>
 
-        {/* ROLE PERMISSION: Strictly hidden for Student accounts */}
-        {canUpload && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowUpload(true)}
-            className="btn-primary flex items-center gap-2 text-xs py-2 px-3.5"
+            onClick={() => setShowRedeemModal(true)}
+            className="btn-secondary flex items-center gap-1.5 text-xs py-2 px-3.5 border-[#C18B52]/40 text-[#845627] hover:bg-[#F6ECE0]/50"
+            title="Redeem a one-time access code issued to you"
           >
-            <Plus className="w-4 h-4" />
-            Upload Document
+            <KeyRound className="w-3.5 h-3.5 text-[#C18B52]" />
+            Redeem Access Code
           </button>
-        )}
+
+          {/* ROLE PERMISSION: Strictly hidden for Student accounts */}
+          {canUpload && (
+            <button
+              onClick={() => setShowUpload(true)}
+              className="btn-primary flex items-center gap-2 text-xs py-2 px-3.5"
+            >
+              <Plus className="w-4 h-4" />
+              Upload Document
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Security Feedback Notification */}
@@ -454,6 +582,17 @@ export default function DocumentsPage() {
                   >
                     <Download className="w-3.5 h-3.5" /> Download
                   </button>
+
+                  {/* One-Time Access Code: available for document owner, faculty, or admin */}
+                  {(canUpload || doc.uploadedBy.id === currentUser?.id) && (
+                    <button
+                      onClick={() => handleOpenReleaseModal(doc)}
+                      className="btn-secondary text-xs py-1.5 px-2.5 border-[#C18B52]/40 text-[#845627] hover:bg-[#F6ECE0]/50"
+                      title="Issue One-Time Access Code to Recipient"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                    </button>
+                  )}
 
                   {/* ROLE PERMISSION: Delete is only shown for Admin or document owner */}
                   {canDeleteDoc && (
@@ -744,6 +883,202 @@ export default function DocumentsPage() {
                 <Download className="w-3.5 h-3.5" /> Download
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Redeem Access Code Modal */}
+      {showRedeemModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#183A35]/40 backdrop-blur-md p-4">
+          <div className="bg-white/95 backdrop-blur-lg w-full max-w-md rounded-2xl border border-[#D9DED8] shadow-[0_16px_40px_rgba(24,58,53,0.15)] p-6">
+            <div className="flex items-center justify-between pb-3 border-b border-[#D9DED8] mb-4">
+              <h2 className="text-base font-semibold text-[#202923] flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-[#C18B52]" />
+                Redeem One-Time Access Code
+              </h2>
+              <button
+                onClick={() => {
+                  setShowRedeemModal(false);
+                  setRedeemCode("");
+                }}
+                className="text-[#68736B] hover:text-[#202923] p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRedeemCode} className="space-y-4">
+              <p className="text-xs text-[#68736B]">
+                Enter the unique one-time access code issued to you by the document owner. Once verified and consumed, your document will be decrypted and downloaded immediately.
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#202923] uppercase tracking-wider mb-1">
+                  Access Code *
+                </label>
+                <input
+                  type="text"
+                  className="input-field text-sm font-mono tracking-widest uppercase text-center"
+                  placeholder="CVLT-XXXX-XXXX-XXXX"
+                  value={redeemCode}
+                  onChange={(e) => setRedeemCode(e.target.value.toUpperCase())}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRedeemModal(false);
+                    setRedeemCode("");
+                  }}
+                  className="btn-secondary flex-1 text-xs py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={redeeming || !redeemCode.trim()}
+                  className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5"
+                >
+                  {redeeming ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>Redeem & Download</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Release One-Time Access Code Modal */}
+      {showReleaseModal && releaseDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#183A35]/40 backdrop-blur-md p-4">
+          <div className="bg-white/95 backdrop-blur-lg w-full max-w-lg rounded-2xl border border-[#D9DED8] shadow-[0_16px_40px_rgba(24,58,53,0.15)] p-6">
+            <div className="flex items-center justify-between pb-3 border-b border-[#D9DED8] mb-4">
+              <h2 className="text-base font-semibold text-[#202923] flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-[#C18B52]" />
+                Issue One-Time Access Code
+              </h2>
+              <button
+                onClick={() => {
+                  setShowReleaseModal(false);
+                  setReleaseDoc(null);
+                  setIssuedCode(null);
+                }}
+                className="text-[#68736B] hover:text-[#202923] p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {issuedCode ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-[#EAF1EE] border border-[#A9C5BB] text-center space-y-2">
+                  <span className="text-[11px] font-semibold text-[#325C53] uppercase tracking-wider block">
+                    One-Time Access Code Generated
+                  </span>
+                  <div className="text-xl font-mono font-bold text-[#202923] tracking-widest bg-white py-2.5 px-4 rounded-lg border border-[#A9C5BB] select-all">
+                    {issuedCode.code}
+                  </div>
+                  <p className="text-[11px] text-[#68736B]">
+                    Valid until: {issuedCode.expiresAt ? new Date(issuedCode.expiresAt).toLocaleString() : "24 hours"}
+                  </p>
+                </div>
+
+                <div className="text-xs text-[#68736B] space-y-1 bg-[#F4F3EE] p-3 rounded-lg border border-[#D9DED8]">
+                  <p>• Usable strictly <strong>once</strong> by the assigned recipient.</p>
+                  <p>• Only stored as a secure SHA-256 hash in the database.</p>
+                  <p>• An in-app notification has been delivered to the recipient.</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(issuedCode.code);
+                    setMessage({ type: "success", text: "Access code copied to clipboard!" });
+                  }}
+                  className="btn-primary w-full py-2 text-xs flex items-center justify-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Code</span>
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleReleaseCode} className="space-y-4">
+                <div className="p-2.5 rounded-lg bg-[#F4F3EE] border border-[#D9DED8] text-xs">
+                  <span className="text-[#68736B]">Document: </span>
+                  <strong className="text-[#202923]">{releaseDoc.title}</strong>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#202923] uppercase tracking-wider mb-1">
+                    Select Recipient *
+                  </label>
+                  <select
+                    className="input-field text-xs"
+                    value={recipientUserId}
+                    onChange={(e) => setRecipientUserId(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Choose recipient user --</option>
+                    {campusUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.role.toUpperCase()}) – {u.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#202923] uppercase tracking-wider mb-1">
+                    Code Expiry Window
+                  </label>
+                  <select
+                    className="input-field text-xs"
+                    value={expiryHours}
+                    onChange={(e) => setExpiryHours(Number(e.target.value))}
+                  >
+                    <option value={1}>1 Hour</option>
+                    <option value={6}>6 Hours</option>
+                    <option value={12}>12 Hours</option>
+                    <option value={24}>24 Hours (1 Day)</option>
+                    <option value={48}>48 Hours (2 Days)</option>
+                    <option value={168}>7 Days</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowReleaseModal(false);
+                      setReleaseDoc(null);
+                    }}
+                    className="btn-secondary flex-1 text-xs py-2"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={releasing || !recipientUserId}
+                    className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5"
+                  >
+                    {releasing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <KeyRound className="w-3.5 h-3.5" />
+                    )}
+                    <span>Generate & Release Code</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

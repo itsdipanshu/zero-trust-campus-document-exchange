@@ -17,6 +17,34 @@ import {
   UserX,
 } from "lucide-react";
 
+interface AccessTicket {
+  id: string;
+  ticketId: string;
+  status: string;
+  reason: string;
+  rejectionReason: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  requester: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    department?: { name: string };
+  };
+  documentOwner: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  document: {
+    id: string;
+    title: string;
+    classification: string;
+    department?: { name: string };
+  };
+}
+
 interface Grant {
   id: string;
   status: string;
@@ -83,9 +111,10 @@ interface Pagination {
 
 export default function AccessGrantsPage() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [activeTab, setActiveTab] = useState<"grants" | "requests">("grants");
+  const [activeTab, setActiveTab] = useState<"grants" | "requests" | "tickets">("grants");
   const [grants, setGrants] = useState<Grant[]>([]);
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
+  const [tickets, setTickets] = useState<AccessTicket[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
@@ -148,15 +177,59 @@ export default function AccessGrantsPage() {
     }
   }, [isAdmin]);
 
+  const fetchTickets = useCallback(async () => {
+    try {
+      const res = await fetch("/api/documents/tickets");
+      const data = await res.json();
+      if (data.success && data.data?.tickets) {
+        setTickets(data.data.tickets);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchGrants();
-  }, [fetchGrants]);
+    fetchTickets();
+  }, [fetchGrants, fetchTickets]);
 
   useEffect(() => {
     if (isAdmin) {
       fetchAccessRequests();
     }
   }, [isAdmin, fetchAccessRequests]);
+
+  const handleReviewTicket = async (
+    ticketId: string,
+    action: "APPROVE" | "REJECT",
+    rejectionReason?: string
+  ) => {
+    try {
+      const res = await fetch(`/api/documents/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          rejectionReason,
+          expiryHours: 24,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({
+          type: "success",
+          text:
+            action === "APPROVE"
+              ? `Re-Access Ticket APPROVED! New one-time access code generated: ${data.data?.accessCode || ""}`
+              : "Re-Access Ticket REJECTED.",
+        });
+        fetchTickets();
+      } else {
+        setMessage({ type: "error", text: data.error || "Review failed" });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Failed to review ticket" });
+    }
+  };
 
   const openCreate = async () => {
     setShowCreate(true);
@@ -278,6 +351,7 @@ export default function AccessGrantsPage() {
   };
 
   const pendingRequestsCount = accessRequests.filter((r) => r.status === "PENDING").length;
+  const pendingTicketsCount = tickets.filter((t) => t.status === "PENDING").length;
 
   return (
     <div className="space-y-6">
@@ -307,19 +381,20 @@ export default function AccessGrantsPage() {
         )}
       </div>
 
-      {/* Tabs for Admins (Grants vs AI Access Requests) */}
-      {isAdmin && (
-        <div className="flex border-b border-[#D9DED8] gap-2">
-          <button
-            onClick={() => setActiveTab("grants")}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
-              activeTab === "grants"
-                ? "border-[#477B70] text-[#202923]"
-                : "border-transparent text-[#68736B] hover:text-[#202923]"
-            }`}
-          >
-            Active & Historical Grants
-          </button>
+      {/* Tabs */}
+      <div className="flex border-b border-[#D9DED8] gap-2">
+        <button
+          onClick={() => setActiveTab("grants")}
+          className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
+            activeTab === "grants"
+              ? "border-[#477B70] text-[#202923]"
+              : "border-transparent text-[#68736B] hover:text-[#202923]"
+          }`}
+        >
+          {isStudent ? "My Grants" : "Active & Historical Grants"}
+        </button>
+
+        {isAdmin && (
           <button
             onClick={() => setActiveTab("requests")}
             className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
@@ -335,8 +410,24 @@ export default function AccessGrantsPage() {
               </span>
             )}
           </button>
-        </div>
-      )}
+        )}
+
+        <button
+          onClick={() => setActiveTab("tickets")}
+          className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+            activeTab === "tickets"
+              ? "border-[#477B70] text-[#202923]"
+              : "border-transparent text-[#68736B] hover:text-[#202923]"
+          }`}
+        >
+          <span>Re-Access Tickets</span>
+          {pendingTicketsCount > 0 && (
+            <span className="bg-[#EAF1EE] text-[#325C53] border border-[#A9C5BB] text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold">
+              {pendingTicketsCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Security Feedback Notification */}
       {message.text && (
@@ -543,6 +634,114 @@ export default function AccessGrantsPage() {
                         </td>
                       </tr>
                     ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Re-Access Tickets Tab Content */}
+      {activeTab === "tickets" && (
+        <div className="space-y-4">
+          <div className="card overflow-hidden">
+            <div className="p-3.5 border-b border-[#D9DED8] bg-[#F4F3EE]/50 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-[#202923] uppercase tracking-wider">
+                  Document Re-Access Request Tickets
+                </h3>
+                <p className="text-[11px] text-[#68736B] mt-0.5">
+                  One-time access tickets raised through Vault AI requiring original document owner review
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="table-header">
+                  <tr>
+                    <th className="py-3 px-4">Ticket ID</th>
+                    <th className="py-3 px-4">Requester</th>
+                    <th className="py-3 px-4">Target Document</th>
+                    <th className="py-3 px-4">Owner</th>
+                    <th className="py-3 px-4">Mandatory Reason</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Review Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#D9DED8]/60 bg-white/70">
+                  {tickets.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-[#68736B]">
+                        No re-access tickets found
+                      </td>
+                    </tr>
+                  ) : (
+                    tickets.map((t) => {
+                      const canReview =
+                        isAdmin ||
+                        t.documentOwner.id === currentUser?.id ||
+                        currentUser?.role === "hod";
+
+                      return (
+                        <tr key={t.id} className="hover:bg-[#EAF1EE]/30 transition-colors">
+                          <td className="table-cell font-mono text-[11px] font-semibold text-[#202923]">
+                            {t.ticketId}
+                          </td>
+                          <td className="table-cell">
+                            <p className="text-[#202923] font-semibold">{t.requester.name}</p>
+                            <p className="text-[#68736B] text-[10px] font-mono">
+                              {t.requester.role.toUpperCase()} • {t.requester.department?.name || "Campus"}
+                            </p>
+                          </td>
+                          <td className="table-cell">
+                            <p className="text-[#202923] font-medium">{t.document.title}</p>
+                            <span className={classBadges[t.document.classification] || "bg-[#E9EBE5] text-[#202923]"}>
+                              {t.document.classification}
+                            </span>
+                          </td>
+                          <td className="table-cell text-[#68736B]">
+                            {t.documentOwner.name}
+                          </td>
+                          <td className="table-cell max-w-xs">
+                            <p className="italic text-[#202923] line-clamp-2 bg-[#F4F3EE] p-1.5 rounded border border-[#D9DED8]/60">
+                              &quot;{t.reason}&quot;
+                            </p>
+                          </td>
+                          <td className="table-cell">
+                            <span className={statusBadges[t.status] || "bg-[#E9EBE5] text-[#202923]"}>
+                              {t.status}
+                            </span>
+                          </td>
+                          <td className="table-cell text-right">
+                            {t.status === "PENDING" && canReview ? (
+                              <div className="inline-flex gap-2">
+                                <button
+                                  onClick={() => handleReviewTicket(t.id, "APPROVE")}
+                                  className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
+                                >
+                                  <UserCheck className="w-3.5 h-3.5" /> Approve
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const reason = prompt("Optional rejection explanation:") || undefined;
+                                    handleReviewTicket(t.id, "REJECT", reason);
+                                  }}
+                                  className="btn-danger text-xs py-1 px-2.5 flex items-center gap-1"
+                                >
+                                  <UserX className="w-3.5 h-3.5" /> Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[#68736B] text-[11px] italic">
+                                {t.status === "PENDING" ? "Awaiting Owner" : `Reviewed (${t.status})`}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
