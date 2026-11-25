@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "postinstall": "node scripts/preparePrisma.js && prisma generate",
-    "build": "node scripts/preparePrisma.js && prisma generate && node scripts/deployDb.js && next build",
+    "build": "node scripts/preparePrisma.js && prisma generate && node scripts/deployDb.js && NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
