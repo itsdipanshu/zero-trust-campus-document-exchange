@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import prisma from "@/lib/db";
+import prisma, { classifyDatabaseError } from "@/lib/db";
 import { hashPassword, generateToken } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/utils";
 import { logAuditEvent } from "@/lib/audit";
@@ -152,19 +152,9 @@ export async function POST(request: NextRequest) {
     if (msg.includes("AUTH_CONFIG_ERROR") || msg.includes("JWT_SECRET")) {
       return errorResponse("Authentication configuration error: JWT_SECRET is not configured properly in hosting environment variables.", 500);
     }
-    if (
-      msg.includes("Can't reach database") ||
-      msg.includes("Unable to open the database file") ||
-      msg.includes("does not exist") ||
-      msg.includes("Error validating datasource") ||
-      msg.includes("must start with the protocol") ||
-      msg.includes("P1001") ||
-      msg.includes("P2021")
-    ) {
-      return errorResponse(
-        "Database connection error: Please ensure DATABASE_URL in Vercel/Netlify is set to your Supabase PostgreSQL URI (postgresql://...) rather than https:// or file:./dev.db.",
-        500
-      );
+    const dbDiag = classifyDatabaseError(error);
+    if (dbDiag) {
+      return errorResponse(dbDiag, 500);
     }
     return errorResponse(`Registration failed: ${msg || "Please try again."}`, 500);
   }
