@@ -59,6 +59,14 @@ export function classifyDatabaseError(error: unknown): string | null {
     return "DATABASE_URL is pointing to local SQLite (file:...). Serverless deployments require a Supabase PostgreSQL URI (postgresql://...) and a fresh Redeploy.";
   }
 
+  if (
+    msg.includes("tenant/user") ||
+    msg.includes("Tenant or user not found") ||
+    (msg.includes("ENOTFOUND") && msg.includes("not found"))
+  ) {
+    return "Supabase Pooler region/host mismatch (tenant/user not found). Copy the exact Session Pooler URI directly from Supabase Dashboard -> Connect -> Session Pooler (do not manually assume aws-0-ap-south-1), update DATABASE_URL in Vercel, and Redeploy.";
+  }
+
   if (code === "P1000" || msg.includes("Authentication failed against database server") || msg.includes("password authentication failed")) {
     return "Database authentication failed (P1000). Verify the database password inside DATABASE_URL (and URL-encode special characters like @, #, %) in Vercel/Netlify, then Redeploy.";
   }
