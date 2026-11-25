@@ -23,16 +23,23 @@ export default function LoginPage() {
         body: JSON.stringify(form),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        setError(`Server configuration error (HTTP ${res.status}). Please verify that DATABASE_URL and JWT_SECRET are set in your Netlify/Vercel settings.`);
+        return;
+      }
 
-      if (!data.success) {
-        setError(data.error || "Authentication failed. Invalid email or password.");
+      if (!res.ok || !data.success) {
+        setError(data.error || `Authentication failed (HTTP ${res.status}). Invalid credentials or database configuration.`);
         return;
       }
 
       router.push("/dashboard");
-    } catch {
-      setError("Network connection error. Please verify your connection.");
+    } catch (err: any) {
+      setError(err?.message || "Network connection error. Please verify your connection.");
     } finally {
       setLoading(false);
     }

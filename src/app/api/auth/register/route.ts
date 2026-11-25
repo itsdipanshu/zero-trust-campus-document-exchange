@@ -126,8 +126,15 @@ export async function POST(request: NextRequest) {
     });
 
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error("[REGISTER]", error);
-    return errorResponse("Registration failed. Please try again.", 500);
+    const msg = error?.message || "";
+    if (msg.includes("AUTH_CONFIG_ERROR") || msg.includes("JWT_SECRET")) {
+      return errorResponse("Authentication configuration error: JWT_SECRET is not configured properly in hosting environment variables.", 500);
+    }
+    if (msg.includes("Can't reach database") || msg.includes("Unable to open the database file") || msg.includes("does not exist") || msg.includes("P1001") || msg.includes("P2021")) {
+      return errorResponse("Database connection failed. Please ensure DATABASE_URL is configured in your Netlify/Vercel settings with your Supabase PostgreSQL database.", 500);
+    }
+    return errorResponse(`Registration failed: ${msg || "Please try again."}`, 500);
   }
 }

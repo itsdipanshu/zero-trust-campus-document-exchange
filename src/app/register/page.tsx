@@ -133,16 +133,23 @@ export default function RegisterPage() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        setError(`Server configuration error (HTTP ${res.status}). Please verify that DATABASE_URL and JWT_SECRET are set in your Netlify/Vercel settings.`);
+        return;
+      }
 
-      if (!data.success) {
-        setError(data.error || "Registration failed");
+      if (!res.ok || !data.success) {
+        setError(data.error || `Registration failed (HTTP ${res.status}). Please check your connection or database configuration.`);
         return;
       }
 
       router.push("/dashboard");
-    } catch {
-      setError("Network error. Please verify your connection and try again.");
+    } catch (err: any) {
+      setError(err?.message || "Network error. Please verify your connection and try again.");
     } finally {
       setLoading(false);
     }
