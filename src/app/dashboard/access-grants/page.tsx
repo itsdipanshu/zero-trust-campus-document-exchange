@@ -16,6 +16,12 @@ import {
   UserCheck,
   UserX,
 } from "lucide-react";
+import AccessTimeSelector, {
+  CustomTimeConfig,
+  createInitialTimeConfig,
+  configFromExistingExpiry,
+  resolveCustomTime,
+} from "@/components/AccessTimeSelector";
 
 interface AccessTicket {
   id: string;
@@ -125,9 +131,25 @@ export default function AccessGrantsPage() {
   const [createForm, setCreateForm] = useState({
     userId: "",
     documentId: "",
-    expiresAt: "",
     reason: "",
   });
+  const [createTimeConfig, setCreateTimeConfig] = useState<CustomTimeConfig>(() =>
+    createInitialTimeConfig(true)
+  );
+  const [editingGrant, setEditingGrant] = useState<Grant | null>(null);
+  const [editTimeConfig, setEditTimeConfig] = useState<CustomTimeConfig>(() =>
+    createInitialTimeConfig(true)
+  );
+  const [savingTime, setSavingTime] = useState(false);
+  const [approvalTarget, setApprovalTarget] = useState<{
+    kind: "ai_request" | "ticket";
+    id: string;
+    title: string;
+    requesterName: string;
+  } | null>(null);
+  const [approvalTimeConfig, setApprovalTimeConfig] = useState<CustomTimeConfig>(() =>
+    createInitialTimeConfig(false, 1440)
+  );
   const [message, setMessage] = useState({ type: "", text: "" });
 
   // Load current user for role-based action controls
@@ -201,7 +223,9 @@ export default function AccessGrantsPage() {
   const handleReviewTicket = async (
     ticketId: string,
     action: "APPROVE" | "REJECT",
-    rejectionReason?: string
+    rejectionReason?: string,
+    customExpiresAt?: string | null,
+    customExpiryHours?: number | null
   ) => {
     try {
       const res = await fetch(`/api/documents/tickets/${ticketId}`, {
@@ -210,7 +234,8 @@ export default function AccessGrantsPage() {
         body: JSON.stringify({
           action,
           rejectionReason,
-          expiryHours: 24,
+          expiresAt: customExpiresAt || undefined,
+          expiryHours: customExpiryHours || 24,
         }),
       });
       const data = await res.json();
@@ -232,6 +257,7 @@ export default function AccessGrantsPage() {
   };
 
   const openCreate = async () => {
+    setCreateTimeConfig(createInitialTimeConfig(true));
     setShowCreate(true);
     try {
       const [uRes, dRes] = await Promise.all([
@@ -250,6 +276,12 @@ export default function AccessGrantsPage() {
     e.preventDefault();
     if (!createForm.userId || !createForm.documentId) return;
 
+    const resolvedTime = resolveCustomTime(createTimeConfig);
+    if (resolvedTime.error) {
+      setMessage({ type: "error", text: resolvedTime.error });
+      return;
+    }
+
     try {
       const res = await fetch("/api/access-grants", {
         method: "POST",
@@ -257,7 +289,7 @@ export default function AccessGrantsPage() {
         body: JSON.stringify({
           userId: createForm.userId,
           documentId: createForm.documentId,
-          expiresAt: createForm.expiresAt || null,
+          expiresAt: resolvedTime.expiresAt,
           reason: createForm.reason || null,
         }),
       });
@@ -268,13 +300,53 @@ export default function AccessGrantsPage() {
           text: "Document access grant successfully provisioned in Zero-Trust registry.",
         });
         setShowCreate(false);
-        setCreateForm({ userId: "", documentId: "", expiresAt: "", reason: "" });
+        setCreateForm({ userId: "", documentId: "", reason: "" });
+        setCreateTimeConfig(createInitialTimeConfig(true));
         fetchGrants();
       } else {
         setMessage({ type: "error", text: data.error || "Failed to grant access." });
       }
     } catch {
       setMessage({ type: "error", text: "Failed to create access grant." });
+    }
+  };
+
+  const handleUpdateGrantExpiry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGrant) return;
+
+    const resolvedTime = resolveCustomTime(editTimeConfig);
+    if (resolvedTime.error) {
+      setMessage({ type: "error", text: resolvedTime.error });
+      return;
+    }
+
+    setSavingTime(true);
+    try {
+      const res = await fetch(`/api/access-grants/${editingGrant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expiresAt: resolvedTime.expiresAt,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({
+          type: "success",
+          text: resolvedTime.expiresAt
+            ? `Access expiration updated to ${new Date(resolvedTime.expiresAt).toLocaleString()}.`
+            : "Access grant updated to Permanent.",
+        });
+        setEditingGrant(null);
+        fetchGrants();
+      } else {
+        setMessage({ type: "error", text: data.error || "Failed to update access time." });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Failed to update access time." });
+    } finally {
+      setSavingTime(false);
     }
   };
 
@@ -303,7 +375,11 @@ export default function AccessGrantsPage() {
   };
 
   // Admin approves AI Access Request
-  const handleReviewRequest = async (requestId: string, status: "APPROVED" | "REJECTED") => {
+  const handleReviewRequest = async (
+    requestId: string,
+    status: "APPROVED" | "REJECTED",
+    customExpiresAt?: string | null
+  ) => {
     if (!isAdmin) return;
     try {
       const res = await fetch("/api/ai/access-requests", {
@@ -312,6 +388,7 @@ export default function AccessGrantsPage() {
         body: JSON.stringify({
           requestId,
           status,
+          expiresAt: status === "APPROVED" ? customExpiresAt || null : null,
           reviewReason: status === "APPROVED" ? "Approved by Admin" : "Rejected by Admin",
         }),
       });
@@ -331,6 +408,35 @@ export default function AccessGrantsPage() {
       }
     } catch {
       setMessage({ type: "error", text: "Failed to review request" });
+    }
+  };
+
+  const handleConfirmApproval = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvalTarget) return;
+
+    const resolvedTime = resolveCustomTime(approvalTimeConfig);
+    if (resolvedTime.error) {
+      setMessage({ type: "error", text: resolvedTime.error });
+      return;
+    }
+
+    setSavingTime(true);
+    try {
+      if (approvalTarget.kind === "ai_request") {
+        await handleReviewRequest(approvalTarget.id, "APPROVED", resolvedTime.expiresAt);
+      } else {
+        await handleReviewTicket(
+          approvalTarget.id,
+          "APPROVE",
+          undefined,
+          resolvedTime.expiresAt,
+          resolvedTime.expiresAtHours
+        );
+      }
+      setApprovalTarget(null);
+    } finally {
+      setSavingTime(false);
     }
   };
 
@@ -534,7 +640,7 @@ export default function AccessGrantsPage() {
                         <td className="table-cell text-[#68736B]">{grant.grantedBy.name}</td>
                         <td className="table-cell text-[#68736B] font-mono text-[11px]">
                           {grant.expiresAt
-                            ? new Date(grant.expiresAt).toLocaleDateString()
+                            ? new Date(grant.expiresAt).toLocaleString()
                             : "Permanent"}
                         </td>
 
@@ -542,12 +648,24 @@ export default function AccessGrantsPage() {
                         {isAdmin && (
                           <td className="table-cell text-right">
                             {grant.status === "active" ? (
-                              <button
-                                onClick={() => handleRevoke(grant.id)}
-                                className="btn-danger text-xs py-1 px-2.5 inline-flex items-center gap-1"
-                              >
-                                <Ban className="w-3 h-3" /> Revoke
-                              </button>
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setEditingGrant(grant);
+                                    setEditTimeConfig(configFromExistingExpiry(grant.expiresAt));
+                                  }}
+                                  className="btn-secondary text-xs py-1 px-2.5 inline-flex items-center gap-1"
+                                  title="Customize Expiration Time"
+                                >
+                                  <Clock className="w-3 h-3" /> Edit Time
+                                </button>
+                                <button
+                                  onClick={() => handleRevoke(grant.id)}
+                                  className="btn-danger text-xs py-1 px-2.5 inline-flex items-center gap-1"
+                                >
+                                  <Ban className="w-3 h-3" /> Revoke
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-[#68736B] text-[11px] italic">Revoked</span>
                             )}
@@ -614,7 +732,15 @@ export default function AccessGrantsPage() {
                           {req.status === "PENDING" ? (
                             <div className="inline-flex gap-2">
                               <button
-                                onClick={() => handleReviewRequest(req.id, "APPROVED")}
+                                onClick={() => {
+                                  setApprovalTimeConfig(createInitialTimeConfig(true, 1440));
+                                  setApprovalTarget({
+                                    kind: "ai_request",
+                                    id: req.id,
+                                    title: req.document.title,
+                                    requesterName: req.user.name,
+                                  });
+                                }}
                                 className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
                               >
                                 <UserCheck className="w-3.5 h-3.5" /> Approve
@@ -718,7 +844,15 @@ export default function AccessGrantsPage() {
                             {t.status === "PENDING" && canReview ? (
                               <div className="inline-flex gap-2">
                                 <button
-                                  onClick={() => handleReviewTicket(t.id, "APPROVE")}
+                                  onClick={() => {
+                                    setApprovalTimeConfig(createInitialTimeConfig(false, 1440));
+                                    setApprovalTarget({
+                                      kind: "ticket",
+                                      id: t.id,
+                                      title: t.document.title,
+                                      requesterName: t.requester.name,
+                                    });
+                                  }}
                                   className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
                                 >
                                   <UserCheck className="w-3.5 h-3.5" /> Approve
@@ -803,18 +937,12 @@ export default function AccessGrantsPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-[#202923] uppercase tracking-wider mb-1">
-                  Expiration Date (Optional)
-                </label>
-                <input
-                  type="datetime-local"
-                  className="input-field text-xs"
-                  value={createForm.expiresAt}
-                  onChange={(e) => setCreateForm({ ...createForm, expiresAt: e.target.value })}
-                />
-                <p className="text-[11px] text-[#68736B] mt-0.5">Leave blank for permanent access.</p>
-              </div>
+              <AccessTimeSelector
+                value={createTimeConfig}
+                onChange={setCreateTimeConfig}
+                allowPermanent={true}
+                label="Custom Access Time / Expiration"
+              />
 
               <div>
                 <label className="block text-xs font-semibold text-[#202923] uppercase tracking-wider mb-1">
@@ -842,6 +970,122 @@ export default function AccessGrantsPage() {
                   className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5"
                 >
                   <KeyRound className="w-3.5 h-3.5" /> Provision Grant
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Existing Grant Access Time Modal */}
+      {editingGrant && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#183A35]/40 backdrop-blur-md p-4">
+          <div className="bg-white/95 backdrop-blur-lg w-full max-w-lg rounded-2xl border border-[#D9DED8] shadow-[0_16px_40px_rgba(24,58,53,0.15)] p-6">
+            <div className="flex items-center justify-between pb-3 border-b border-[#D9DED8] mb-4">
+              <h2 className="text-base font-semibold text-[#202923] flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#477B70]" />
+                Customize User Access Time
+              </h2>
+              <button onClick={() => setEditingGrant(null)} className="text-[#68736B] hover:text-[#202923]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateGrantExpiry} className="space-y-4">
+              <div className="p-3 rounded-xl bg-[#F4F3EE] border border-[#D9DED8] text-xs space-y-1">
+                <p>
+                  <span className="text-[#68736B]">User:</span>{" "}
+                  <strong className="text-[#202923]">{editingGrant.user.name}</strong> ({editingGrant.user.email})
+                </p>
+                <p>
+                  <span className="text-[#68736B]">Document:</span>{" "}
+                  <strong className="text-[#202923]">{editingGrant.document.title}</strong>
+                </p>
+              </div>
+
+              <AccessTimeSelector
+                value={editTimeConfig}
+                onChange={setEditTimeConfig}
+                allowPermanent={true}
+                label="Set New Access Expiration Time"
+              />
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingGrant(null)}
+                  className="btn-secondary flex-1 text-xs py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTime}
+                  className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5"
+                >
+                  {savingTime ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                  Save Access Time
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Request / Ticket with Custom Access Time Modal */}
+      {approvalTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#183A35]/40 backdrop-blur-md p-4">
+          <div className="bg-white/95 backdrop-blur-lg w-full max-w-lg rounded-2xl border border-[#D9DED8] shadow-[0_16px_40px_rgba(24,58,53,0.15)] p-6">
+            <div className="flex items-center justify-between pb-3 border-b border-[#D9DED8] mb-4">
+              <h2 className="text-base font-semibold text-[#202923] flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-[#477B70]" />
+                {approvalTarget.kind === "ticket"
+                  ? "Approve Re-Access Ticket & Set Code Time"
+                  : "Approve Access Request & Set Grant Time"}
+              </h2>
+              <button onClick={() => setApprovalTarget(null)} className="text-[#68736B] hover:text-[#202923]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmApproval} className="space-y-4">
+              <div className="p-3 rounded-xl bg-[#F4F3EE] border border-[#D9DED8] text-xs space-y-1">
+                <p>
+                  <span className="text-[#68736B]">Requester:</span>{" "}
+                  <strong className="text-[#202923]">{approvalTarget.requesterName}</strong>
+                </p>
+                <p>
+                  <span className="text-[#68736B]">Document:</span>{" "}
+                  <strong className="text-[#202923]">{approvalTarget.title}</strong>
+                </p>
+              </div>
+
+              <AccessTimeSelector
+                value={approvalTimeConfig}
+                onChange={setApprovalTimeConfig}
+                allowPermanent={approvalTarget.kind === "ai_request"}
+                label={
+                  approvalTarget.kind === "ticket"
+                    ? "One-Time Access Code Validity Window"
+                    : "Granted Access Duration"
+                }
+              />
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setApprovalTarget(null)}
+                  className="btn-secondary flex-1 text-xs py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTime}
+                  className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5"
+                >
+                  {savingTime ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
+                  Confirm & Approve
                 </button>
               </div>
             </form>

@@ -44,7 +44,15 @@ export async function PATCH(
     }
 
     if (body.expiresAt !== undefined) {
-      updateData.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+      if (body.expiresAt) {
+        const parsed = new Date(body.expiresAt);
+        if (isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+          return errorResponse("Expiration date and time must be a valid future timestamp", 400);
+        }
+        updateData.expiresAt = parsed;
+      } else {
+        updateData.expiresAt = null;
+      }
     }
 
     const updated = await prisma.accessGrant.update({
@@ -66,6 +74,21 @@ export async function PATCH(
         reason: `Revoked ${grant.user.email}'s access to ${grant.document.title}`,
         ipAddress: request.headers.get("x-forwarded-for") || "unknown",
         metadata: { grantId: id },
+      });
+    } else if (body.expiresAt !== undefined) {
+      await logAuditEvent({
+        userId: currentUser.id,
+        documentId: grant.documentId,
+        action: "update_access_expiry",
+        decision: "allowed",
+        reason: `Updated access expiration for ${grant.user.email} on ${grant.document.title} to ${
+          updated.expiresAt ? updated.expiresAt.toISOString() : "Permanent"
+        }`,
+        ipAddress: request.headers.get("x-forwarded-for") || "unknown",
+        metadata: {
+          grantId: id,
+          expiresAt: updated.expiresAt ? updated.expiresAt.toISOString() : null,
+        },
       });
     }
 

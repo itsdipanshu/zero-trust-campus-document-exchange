@@ -85,6 +85,7 @@ export async function releaseOneTimeAccessCode(params: {
   recipientUserId: string;
   createdById: string;
   expiresAtHours?: number;
+  expiresAt?: Date | string;
   ticketId?: string;
   ipAddress?: string;
   userAgent?: string;
@@ -103,6 +104,7 @@ export async function releaseOneTimeAccessCode(params: {
     recipientUserId,
     createdById,
     expiresAtHours = 24,
+    expiresAt: customExpiresAt,
     ticketId,
     ipAddress = "unknown",
     userAgent = "unknown",
@@ -148,11 +150,31 @@ export async function releaseOneTimeAccessCode(params: {
     };
   }
 
-  // 3. Generate cryptographically secure access code
+  // 3. Resolve custom expiration time & generate cryptographically secure access code
+  let expiresAt: Date;
+  if (customExpiresAt) {
+    expiresAt = new Date(customExpiresAt);
+    if (isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+      return {
+        success: false,
+        error: "Custom expiration time must be a valid future date and time.",
+        statusCode: 400,
+      };
+    }
+  } else {
+    const hours = Number(expiresAtHours);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return {
+        success: false,
+        error: "Expiration duration must be greater than 0.",
+        statusCode: 400,
+      };
+    }
+    expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+  }
+
   const code = generateSecureAccessCode();
   const codeHash = hashAccessCode(code);
-
-  const expiresAt = new Date(Date.now() + expiresAtHours * 60 * 60 * 1000);
 
   // 4. Invalidate any existing unused access codes for this recipient & document
   await prisma.documentAccessCode.updateMany({
@@ -663,6 +685,7 @@ export async function reviewReAccessTicket(params: {
   action: "APPROVE" | "REJECT";
   rejectionReason?: string;
   expiryHours?: number;
+  expiresAt?: Date | string;
   ipAddress?: string;
   userAgent?: string;
 }): Promise<{
@@ -679,6 +702,7 @@ export async function reviewReAccessTicket(params: {
     action,
     rejectionReason,
     expiryHours = 24,
+    expiresAt,
     ipAddress = "unknown",
     userAgent = "unknown",
   } = params;
@@ -731,6 +755,7 @@ export async function reviewReAccessTicket(params: {
       recipientUserId: ticket.requesterId,
       createdById: reviewerId,
       expiresAtHours: expiryHours,
+      expiresAt,
       ticketId: ticket.id,
       ipAddress,
       userAgent,

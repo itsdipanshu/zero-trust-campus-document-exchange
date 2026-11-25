@@ -92,7 +92,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { action, rejectionReason, expiryHours } = body;
+    const { action, rejectionReason, expiryHours, expiresAt } = body;
 
     if (!action || !["APPROVE", "REJECT"].includes(action)) {
       return errorResponse("Action must be either 'APPROVE' or 'REJECT'", 400);
@@ -107,6 +107,7 @@ export async function PATCH(
       action,
       rejectionReason,
       expiryHours: expiryHours ? Number(expiryHours) : 24,
+      expiresAt: expiresAt || undefined,
       ipAddress,
       userAgent,
     });

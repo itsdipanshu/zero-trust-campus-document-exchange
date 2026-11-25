@@ -20,6 +20,11 @@ import {
   KeyRound,
   Copy,
 } from "lucide-react";
+import AccessTimeSelector, {
+  CustomTimeConfig,
+  createInitialTimeConfig,
+  resolveCustomTime,
+} from "@/components/AccessTimeSelector";
 
 interface Department {
   id: string;
@@ -88,7 +93,9 @@ export default function DocumentsPage() {
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [releaseDoc, setReleaseDoc] = useState<Document | null>(null);
   const [recipientUserId, setRecipientUserId] = useState("");
-  const [expiryHours, setExpiryHours] = useState(24);
+  const [releaseTimeConfig, setReleaseTimeConfig] = useState<CustomTimeConfig>(() =>
+    createInitialTimeConfig(false, 1440)
+  );
   const [releasing, setReleasing] = useState(false);
   const [issuedCode, setIssuedCode] = useState<{
     code: string;
@@ -258,6 +265,7 @@ export default function DocumentsPage() {
     setReleaseDoc(doc);
     setIssuedCode(null);
     setRecipientUserId("");
+    setReleaseTimeConfig(createInitialTimeConfig(false, 1440));
     setShowReleaseModal(true);
     try {
       const res = await fetch("/api/users?limit=100");
@@ -273,6 +281,16 @@ export default function DocumentsPage() {
   const handleReleaseCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!releaseDoc || !recipientUserId) return;
+
+    const resolvedTime = resolveCustomTime(releaseTimeConfig);
+    if (resolvedTime.error || !resolvedTime.expiresAt) {
+      setMessage({
+        type: "error",
+        text: resolvedTime.error || "Please select a valid future expiration time.",
+      });
+      return;
+    }
+
     setReleasing(true);
     try {
       const res = await fetch("/api/documents/release-code", {
@@ -281,7 +299,8 @@ export default function DocumentsPage() {
         body: JSON.stringify({
           documentId: releaseDoc.id,
           recipientUserId,
-          expiresAtHours: Number(expiryHours) || 24,
+          expiresAt: resolvedTime.expiresAt,
+          expiresAtHours: resolvedTime.expiresAtHours || 24,
         }),
       });
       const data = await res.json();
@@ -1035,23 +1054,12 @@ export default function DocumentsPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-[#202923] uppercase tracking-wider mb-1">
-                    Code Expiry Window
-                  </label>
-                  <select
-                    className="input-field text-xs"
-                    value={expiryHours}
-                    onChange={(e) => setExpiryHours(Number(e.target.value))}
-                  >
-                    <option value={1}>1 Hour</option>
-                    <option value={6}>6 Hours</option>
-                    <option value={12}>12 Hours</option>
-                    <option value={24}>24 Hours (1 Day)</option>
-                    <option value={48}>48 Hours (2 Days)</option>
-                    <option value={168}>7 Days</option>
-                  </select>
-                </div>
+                <AccessTimeSelector
+                  value={releaseTimeConfig}
+                  onChange={setReleaseTimeConfig}
+                  allowPermanent={false}
+                  label="Custom Code Expiry Window *"
+                />
 
                 <div className="flex gap-2.5 pt-2">
                   <button

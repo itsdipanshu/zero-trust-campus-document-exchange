@@ -149,6 +149,14 @@ export async function PATCH(request: NextRequest) {
       return errorResponse("Access request not found", 404);
     }
 
+    let parsedExpiresAt: Date | null = null;
+    if (status === "APPROVED" && expiresAt) {
+      parsedExpiresAt = new Date(expiresAt);
+      if (isNaN(parsedExpiresAt.getTime()) || parsedExpiresAt.getTime() <= Date.now()) {
+        return errorResponse("Expiration date and time must be a valid future timestamp", 400);
+      }
+    }
+
     // Update request record
     const updated = await prisma.aiAccessRequest.update({
       where: { id: requestId },
@@ -169,7 +177,7 @@ export async function PATCH(request: NextRequest) {
           documentId: accessReq.documentId,
           grantedById: user.id,
           status: "active",
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
+          expiresAt: parsedExpiresAt,
           reason: `Approved from AI Access Request: ${reviewReason || "Admin approval"}`,
         },
       });

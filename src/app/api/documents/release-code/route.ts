@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { documentId, recipientUserId, expiresAtHours } = body;
+    const { documentId, recipientUserId, expiresAtHours, expiresAt } = body;
 
     if (!documentId || !recipientUserId) {
       return errorResponse("documentId and recipientUserId are required", 400);
@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       recipientUserId,
       createdById: user.id,
       expiresAtHours: expiresAtHours ? Number(expiresAtHours) : 24,
+      expiresAt: expiresAt || undefined,
       ipAddress,
       userAgent,
     });

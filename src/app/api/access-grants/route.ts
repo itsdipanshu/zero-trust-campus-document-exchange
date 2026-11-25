@@ -109,6 +109,14 @@ export async function POST(request: NextRequest) {
     const document = await prisma.document.findUnique({ where: { id: documentId } });
     if (!document) return errorResponse("Document not found", 404);
 
+    let parsedExpiresAt: Date | null = null;
+    if (expiresAt) {
+      parsedExpiresAt = new Date(expiresAt);
+      if (isNaN(parsedExpiresAt.getTime()) || parsedExpiresAt.getTime() <= Date.now()) {
+        return errorResponse("Expiration date and time must be a valid future timestamp", 400);
+      }
+    }
+
     // Check for existing active grant
     const existingGrant = await prisma.accessGrant.findFirst({
       where: { userId, documentId, status: "active" },
@@ -123,7 +131,7 @@ export async function POST(request: NextRequest) {
         documentId,
         status: "active",
         grantedById: currentUser.id,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        expiresAt: parsedExpiresAt,
         reason: reason || null,
       },
       include: {
