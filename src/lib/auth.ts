@@ -1,10 +1,35 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import argon2 from "argon2";
 import { cookies } from "next/headers";
 import prisma from "./db";
 
 const TOKEN_EXPIRY = "24h";
+
+let cachedArgon2: typeof import("argon2") | null | undefined = undefined;
+
+/**
+ * Safely loads the native argon2 module on demand.
+ * Prevents server crashes on serverless platforms (e.g. Node 26 ABI 147)
+ * where prebuilt native binaries are unavailable, falling back to pure-JS bcryptjs.
+ */
+async function getArgon2(): Promise<typeof import("argon2") | null> {
+  if (cachedArgon2 !== undefined) return cachedArgon2;
+  try {
+    const dynamicRequire = eval("require");
+    const mod = dynamicRequire("argon2");
+    if (mod && typeof mod.hash === "function" && typeof mod.verify === "function") {
+      cachedArgon2 = mod;
+      return cachedArgon2 ?? null;
+    }
+  } catch (err: any) {
+    console.warn(
+      "[AUTH] argon2 native binding unavailable in current runtime; using pure-JS bcryptjs fallback:",
+      err?.message || err
+    );
+  }
+  cachedArgon2 = null;
+  return null;
+}
 
 export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -32,19 +57,24 @@ export interface JWTPayload {
 }
 
 /**
- * Hashes passwords using Argon2id (RFC 9106 recommended).
+ * Hashes passwords using Argon2id (RFC 9106 recommended) when native bindings
+ * are available, or pure-JS bcryptjs (cost 12) in serverless runtimes.
  */
 export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 65536, // 64 MB
-    timeCost: 3,
-    parallelism: 4,
-  });
+  const argon2 = await getArgon2();
+  if (argon2) {
+    return argon2.hash(password, {
+      type: argon2.argon2id,
+      memoryCost: 65536, // 64 MB
+      timeCost: 3,
+      parallelism: 4,
+    });
+  }
+  return bcrypt.hash(password, 12);
 }
 
 /**
- * Verifies passwords supporting both modern Argon2id and legacy Bcrypt hashes.
+ * Verifies passwords supporting both modern Argon2id and legacy/serverless Bcrypt hashes.
  */
 export async function verifyPassword(
   password: string,
@@ -52,9 +82,11 @@ export async function verifyPassword(
 ): Promise<boolean> {
   try {
     if (hash.startsWith("$argon2")) {
+      const argon2 = await getArgon2();
+      if (!argon2) return false;
       return await argon2.verify(hash, password);
     }
-    // Fallback for existing seed / legacy bcrypt hashes
+    // Supports bcrypt ($2a$ / $2b$) hashes across all runtimes
     return await bcrypt.compare(password, hash);
   } catch {
     return false;

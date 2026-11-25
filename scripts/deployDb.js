@@ -9,7 +9,7 @@
 
 const { execSync } = require("child_process");
 
-const dbUrl = (process.env.DATABASE_URL || "").trim();
+const dbUrl = (process.env.DATABASE_URL || "").trim().replace(/^["']|["']$/g, "");
 const isPostgres = dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://");
 
 if (isPostgres) {

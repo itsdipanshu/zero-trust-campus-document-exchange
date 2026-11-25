@@ -17,7 +17,7 @@ const schemaPath = path.join(__dirname, "..", "prisma", "schema.prisma");
 
 if (fs.existsSync(schemaPath)) {
   let schema = fs.readFileSync(schemaPath, "utf8");
-  const dbUrl = (process.env.DATABASE_URL || "").trim();
+  const dbUrl = (process.env.DATABASE_URL || "").trim().replace(/^["']|["']$/g, "");
 
   const isPostgres = dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://");
   const targetProvider = isPostgres ? "postgresql" : "sqlite";

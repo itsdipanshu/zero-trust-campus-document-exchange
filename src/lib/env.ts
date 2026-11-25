@@ -21,9 +21,14 @@ export function validateEnvironment(): EnvValidationResult {
   const isProduction = process.env.NODE_ENV === "production";
 
   // 1. DATABASE_URL Validation
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl || dbUrl.trim() === "") {
+  const rawDbUrl = process.env.DATABASE_URL;
+  const dbUrl = rawDbUrl ? rawDbUrl.trim().replace(/^["']|["']$/g, "") : "";
+  if (!dbUrl) {
     errors.push("[DATABASE_URL] Missing DATABASE_URL environment variable.");
+  } else if (dbUrl.startsWith("https://") || dbUrl.startsWith("http://")) {
+    warnings.push(
+      "[DATABASE_URL] DATABASE_URL is an HTTP/HTTPS URL (likely NEXT_PUBLIC_SUPABASE_URL). Prisma requires a PostgreSQL URI starting with 'postgresql://' or 'postgres://' from Supabase Settings -> Database -> Connection String."
+    );
   } else if (!dbUrl.startsWith("file:") && !dbUrl.startsWith("postgresql://") && !dbUrl.startsWith("postgres://")) {
     warnings.push("[DATABASE_URL] DATABASE_URL does not match standard SQLite ('file:...') or PostgreSQL ('postgresql://...') protocol.");
   }
