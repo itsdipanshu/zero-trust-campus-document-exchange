@@ -81,9 +81,8 @@ export async function PATCH(
         documentId: grant.documentId,
         action: "update_access_expiry",
         decision: "allowed",
-        reason: `Updated access expiration for ${grant.user.email} on ${grant.document.title} to ${
-          updated.expiresAt ? updated.expiresAt.toISOString() : "Permanent"
-        }`,
+        reason: `Updated access expiration for ${grant.user.email} on ${grant.document.title} to ${updated.expiresAt ? updated.expiresAt.toISOString() : "Permanent"
+          }`,
         ipAddress: request.headers.get("x-forwarded-for") || "unknown",
         metadata: {
           grantId: id,

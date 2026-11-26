@@ -9,8 +9,9 @@
 
 const { execSync } = require("child_process");
 
-const dbUrl = (process.env.DATABASE_URL || "").trim().replace(/^["']|["']$/g, "");
+const dbUrl = (process.env.DATABASE_URL || "").trim().replace(/^["']|["']$/g, "").trim();
 const isPostgres = dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://");
+const isCloud = Boolean(process.env.VERCEL || process.env.NETLIFY);
 
 if (isPostgres) {
   console.log("\n=======================================================");
@@ -29,6 +30,15 @@ if (isPostgres) {
     console.error("\n[CAMPUSVAULT DEPLOY ERROR] Database migration/seed issue:", err.message);
     // Don't fail the build if DB is temporarily unreachable, Next.js build can still proceed
   }
+} else if (isCloud) {
+  console.error("\n=======================================================");
+  console.error("❌ [CAMPUSVAULT DEPLOY CONFIGURATION ERROR]");
+  console.error("Vercel/Netlify deployment detected, but DATABASE_URL is missing or not a PostgreSQL URI!");
+  console.error("Serverless environments cannot use SQLite (Error code 14: Unable to open database file).");
+  console.error("Please add DATABASE_URL=postgresql://... in Vercel Settings -> Environment Variables");
+  console.error("Make sure 'Production' environment checkbox is checked, then Redeploy.");
+  console.error("=======================================================\n");
+  throw new Error("DATABASE_URL must be a valid PostgreSQL connection URI on Vercel/Netlify.");
 } else {
   console.log("[CAMPUSVAULT DEPLOY] Local/SQLite database configuration detected. Skipping cloud DB push.");
 }

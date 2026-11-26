@@ -14,13 +14,27 @@ const fs = require("fs");
 const path = require("path");
 
 const schemaPath = path.join(__dirname, "..", "prisma", "schema.prisma");
+const envPath = path.join(__dirname, "..", ".env");
+
+let dbUrl = (process.env.DATABASE_URL || "").trim().replace(/^["']|["']$/g, "").trim();
+
+// If process.env.DATABASE_URL is not set, load it from .env
+if (!dbUrl && fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, "utf8");
+  const match = envContent.match(/DATABASE_URL\s*=\s*["']?([^"'\r\n]+)["']?/);
+  if (match) {
+    dbUrl = match[1].trim();
+  }
+}
+
+const isCloud = Boolean(process.env.VERCEL || process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const isPostgres = dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://");
+
+// On cloud serverless (Vercel/Netlify), SQLite is never supported; always require PostgreSQL
+const targetProvider = (isCloud || isPostgres) ? "postgresql" : "sqlite";
 
 if (fs.existsSync(schemaPath)) {
   let schema = fs.readFileSync(schemaPath, "utf8");
-  const dbUrl = (process.env.DATABASE_URL || "").trim().replace(/^["']|["']$/g, "");
-
-  const isPostgres = dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://");
-  const targetProvider = isPostgres ? "postgresql" : "sqlite";
 
   const match = schema.match(/provider\s*=\s*"(\w+)"/);
   const currentProvider = match ? match[1] : null;
