@@ -477,49 +477,71 @@ export async function processAiMessage(
   // ─────────────────────────────────────────────────────────────
   else if (
     lower.includes("ticket") ||
+    lower.includes("tiket") ||
     lower.includes("my requests") ||
     lower.includes("request status") ||
     lower.includes("my tickets") ||
+    lower.includes("student ticket") ||
+    lower.includes("student ne bheja") ||
     lower.includes("access code") ||
     lower.includes("my code")
   ) {
-    const userTickets = await prisma.documentAccessTicket.findMany({
-      where: { requesterId: user.id },
+    const isAdmin = user.role === "admin";
+    const isFaculty = user.role === "faculty" || user.role === "hod";
+
+    const whereClause = isAdmin
+      ? {}
+      : isFaculty
+      ? { OR: [{ documentOwnerId: user.id }, { requesterId: user.id }] }
+      : { requesterId: user.id };
+
+    const tickets = await prisma.documentAccessTicket.findMany({
+      where: whereClause,
       orderBy: { createdAt: "desc" },
-      include: { document: true, documentOwner: true },
-      take: 5,
+      include: {
+        document: true,
+        documentOwner: true,
+        requester: { select: { id: true, name: true, role: true } },
+      },
+      take: 10,
     });
 
-    if (userTickets.length === 0) {
-      replyText = `You do not have any re-access request tickets currently recorded in CampusVault.`;
+    if (tickets.length === 0) {
+      if (isAdmin || isFaculty) {
+        replyText = `Students ki taraf se koi pending access ticket nahi aaya hai. Currently there are no document access tickets submitted for review.`;
+      } else {
+        replyText = `You do not have any re-access request tickets currently recorded in CampusVault.`;
+      }
     } else {
       const lines: string[] = [
-        `🎫 **Your Document Re-Access Request Tickets (${userTickets.length}):**\n`,
+        `🎫 **Document Re-Access Request Tickets (${tickets.length}):**\n`,
       ];
       const cardList: ChatResponse["ticketList"] = [];
 
-      for (const t of userTickets) {
+      for (const t of tickets) {
         cardList.push({
           ticketId: t.ticketId,
-          documentTitle: t.document.title,
-          documentOwner: t.documentOwner.name,
+          documentTitle: t.document?.title || "Unknown Document",
+          documentOwner: t.documentOwner?.name || "Faculty",
           status: t.status,
           reason: t.reason,
           rejectionReason: t.rejectionReason || undefined,
           createdAt: t.createdAt.toISOString(),
         });
 
+        const studentInfo = t.requester?.name ? ` by **${t.requester.name}** (${t.requester.role.toUpperCase()})` : "";
+
         if (t.status === "APPROVED") {
           lines.push(
-            `• **${t.ticketId}** – **${t.document.title}**: Status is **APPROVED** by ${t.documentOwner.name}. A new one-time access code has been issued! You can redeem it in Document Vault.`
+            `• **${t.ticketId}** – **${t.document?.title || "Document"}**${studentInfo}: Status is **APPROVED**. A one-time access code was issued.`
           );
         } else if (t.status === "REJECTED") {
           lines.push(
-            `• **${t.ticketId}** – **${t.document.title}**: Status is **REJECTED**. Reason: ${t.rejectionReason || "No explanation provided"}.`
+            `• **${t.ticketId}** – **${t.document?.title || "Document"}**${studentInfo}: Status is **REJECTED**. Reason: ${t.rejectionReason || "No explanation provided"}.`
           );
         } else {
           lines.push(
-            `• **${t.ticketId}** – **${t.document.title}**: Status is **PENDING** review by ${t.documentOwner.name}.`
+            `• **${t.ticketId}** – **${t.document?.title || "Document"}**${studentInfo}: Status is **PENDING** review.`
           );
         }
       }
@@ -680,29 +702,33 @@ export async function processAiMessage(
       replyText = lines.join("\n");
     }
   } else if (
-    attachedDocumentId ||
-    lower.includes("send document") ||
-    lower.includes("send this document") ||
-    lower.includes("send my assignment") ||
-    lower.includes("send my report") ||
-    lower.includes("send this pdf") ||
-    lower.includes("send pdf") ||
-    lower.includes("message my teacher") ||
-    lower.includes("message faculty") ||
-    lower.includes("message admin") ||
-    lower.includes("send to") ||
-    lower.includes("send these") ||
-    lower.includes("please send") ||
-    lower.includes("ask my teacher to review") ||
-    lower.includes("review this document") ||
-    lower.includes("ko bhejo") ||
-    lower.includes("ko bhej do") ||
-    (lower.startsWith("send ") &&
-      (lower.includes("to teacher") ||
-        lower.includes("to admin") ||
-        lower.includes("to faculty") ||
-        lower.includes("to student") ||
-        lower.includes("@")))
+    !lower.includes("ticket") &&
+    !lower.includes("tiket") &&
+    !lower.includes("nhi") &&
+    !lower.includes("nahi") &&
+    (attachedDocumentId ||
+      lower.includes("send document") ||
+      lower.includes("send this document") ||
+      lower.includes("send my assignment") ||
+      lower.includes("send my report") ||
+      lower.includes("send this pdf") ||
+      lower.includes("send pdf") ||
+      lower.includes("message my teacher") ||
+      lower.includes("message faculty") ||
+      lower.includes("message admin") ||
+      lower.includes("send to") ||
+      lower.includes("send these") ||
+      lower.includes("please send") ||
+      lower.includes("ask my teacher to review") ||
+      lower.includes("review this document") ||
+      lower.includes("ko bhejo") ||
+      lower.includes("ko bhej do") ||
+      (lower.startsWith("send ") &&
+        (lower.includes("to teacher") ||
+          lower.includes("to admin") ||
+          lower.includes("to faculty") ||
+          lower.includes("to student") ||
+          lower.includes("@"))))
   ) {
     // 1. Determine Target Role or Specific Recipient Name
     let targetRole: string | null = null;
@@ -1206,6 +1232,28 @@ export async function processAiMessage(
 • **Permissions Status:** Ask "Do I have any pending or expired grants?"
 • **Secure Messaging:** Type "Send this document to Teacher" or attach files with the paperclip button.
 • **Multilingual:** You can chat in English, Hindi, or natural Hinglish!`;
+  } else if (
+    lower.includes("check again") ||
+    lower.includes("cheak agen") ||
+    lower.includes("cheak again") ||
+    lower.includes("check agen") ||
+    lower.includes("recheck") ||
+    lower.includes("fir se check") ||
+    lower.includes("dobara check") ||
+    lower.includes("wapas check")
+  ) {
+    const lastAssistantMsg = sessionId
+      ? await prisma.aiChatMessage.findFirst({
+          where: { sessionId, userId: user.id, messageRole: "assistant" },
+          orderBy: { createdAt: "desc" },
+        })
+      : null;
+
+    if (lastAssistantMsg?.messageContent.toLowerCase().includes("ticket")) {
+      replyText = "Maine dobara check kar liya hai: filhal review ke liye koi naya document access ticket nahi aaya hai.";
+    } else {
+      replyText = "Maine dobara check kar liya hai: aapke CampusVault account mein filhal koi naye messages ya shared documents nahi hain.";
+    }
   } else {
     replyText = `Hello ${user.name}! I am your private CampusVault Document Assistant.
 Under Zero-Trust security, I only have access to records permitted for your verified account (${user.role.toUpperCase()} in ${user.department?.name || "Campus"}).

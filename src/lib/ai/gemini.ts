@@ -68,7 +68,7 @@ const tools: FunctionDeclaration[] = [
   },
   {
     name: "prepareSecureDocumentDelivery",
-    description: "Prepares a Zero-Trust verified document or message delivery confirmation card. Verifies recipient and sender rights.",
+    description: "Prepares a Zero-Trust verified document or message delivery confirmation card. ONLY call this when the user explicitly commands to SEND or TRANSMIT a file/message TO a recipient (e.g. 'Send this PDF to Teacher' or 'Deliver document to Dr. Sharma'). NEVER call this tool when the user is asking whether they received a document, asking about tickets, or asking questions.",
     parameters: {
       type: "OBJECT" as any,
       properties: {
@@ -108,7 +108,7 @@ const tools: FunctionDeclaration[] = [
   },
   {
     name: "checkReAccessTickets",
-    description: "Checks the status of the user's document re-access request tickets and any active one-time access codes issued.",
+    description: "Checks document access tickets and student re-access requests. If the user is an Admin or Faculty/Owner, this checks tickets submitted by students or department members. If the user is a Student, this checks the tickets they requested.",
     parameters: {
       type: "OBJECT" as any,
       properties: {},
@@ -429,20 +429,36 @@ async function executeGeminiTool(
     }
 
     case "checkReAccessTickets": {
+      const isAdmin = user.role === "admin";
+      const isFaculty = user.role === "faculty" || user.role === "hod";
+
+      const whereClause = isAdmin
+        ? {}
+        : isFaculty
+        ? { OR: [{ documentOwnerId: user.id }, { requesterId: user.id }] }
+        : { requesterId: user.id };
+
       const tickets = await prisma.documentAccessTicket.findMany({
-        where: { requesterId: user.id },
+        where: whereClause,
         orderBy: { createdAt: "desc" },
-        include: { document: true, documentOwner: true },
-        take: 5,
+        include: {
+          document: true,
+          documentOwner: true,
+          requester: { select: { id: true, name: true, email: true, role: true } },
+        },
+        take: 10,
       });
 
       return {
         toolResult: {
+          userRole: user.role,
           count: tickets.length,
           tickets: tickets.map((t) => ({
             ticketId: t.ticketId,
-            document: t.document.title,
-            owner: t.documentOwner.name,
+            document: t.document?.title || "Unknown Document",
+            requesterName: t.requester?.name || "Student",
+            requesterRole: t.requester?.role || "student",
+            owner: t.documentOwner?.name || "Faculty",
             status: t.status,
             reason: t.reason,
             rejectionReason: t.rejectionReason,
@@ -452,8 +468,8 @@ async function executeGeminiTool(
         chatResponsePartial: {
           ticketList: tickets.map((t) => ({
             ticketId: t.ticketId,
-            documentTitle: t.document.title,
-            documentOwner: t.documentOwner.name,
+            documentTitle: t.document?.title || "Unknown Document",
+            documentOwner: t.documentOwner?.name || "Faculty",
             status: t.status,
             reason: t.reason,
             rejectionReason: t.rejectionReason || undefined,
@@ -489,12 +505,12 @@ export async function generateGeminiChatResponse(
   const langPref = (aiLanguagePreference || (user as any).aiLanguage || "auto").toLowerCase();
   const languageInstruction =
     langPref === "hi"
-      ? "Always reply strictly in Hindi (Devanagari script)."
+      ? "CRITICAL MANDATORY INSTRUCTION: The user has selected HINDI. You MUST write your ENTIRE response in Hindi using the Devanagari script (e.g. 'विद्यार्थियों की तरफ से कोई नया टिकट नहीं आया है।'). Do NOT respond in English."
       : langPref === "hinglish"
-      ? "Always reply naturally in Hinglish (Hindi written in Roman English alphabet), friendly and conversational."
+      ? "CRITICAL MANDATORY INSTRUCTION: The user has selected HINGLISH. You MUST write your ENTIRE response in natural, conversational Hinglish (Hindi written in Roman/English alphabet, e.g. 'Students ki taraf se koi pending access ticket nahi aaya hai.'). Do NOT respond in pure English."
       : langPref === "en"
-      ? "Always reply strictly in English."
-      : "Detect the language of the user prompt and reply in the matching language (English, Hindi, or Hinglish).";
+      ? "CRITICAL MANDATORY INSTRUCTION: Reply strictly in English."
+      : "Detect the language of the user prompt and reply in the matching language (if user writes in Hindi or Hinglish, reply in Hindi/Hinglish; if English, reply in English).";
 
   const systemInstruction = `You are Vault AI, the Private Campus Document Assistant for the CAMPUSVAULT platform (NexHack 2.0).
 Your core duty is to help campus members securely manage documents, review permissions, and exchange files under Zero-Trust security protocols.
@@ -508,13 +524,12 @@ AUTHENTICATED USER CONTEXT:
 SECURITY & PRIVACY RULES:
 1. Never disclose encryption keys (AES-256-GCM), password hashes, physical storage keys/paths, or database connection strings.
 2. Never reveal confidential document contents or uploader identities to unauthorized students.
-3. For sending documents, messages, or files to teachers, admins, or peers, ALWAYS call the 'prepareSecureDocumentDelivery' tool. NEVER claim you directly transferred a file without user confirmation.
-4. For questions about accessible documents, call 'findMyAccessibleDocuments'.
-5. For checking pending requests, call 'checkPendingAccessRequests'.
-6. For status of specific documents, call 'checkDocumentAccessStatus'.
-7. For received messages or who sent documents, call 'showReceivedMessages'.
+3. FOLLOW-UPS & RE-CHECKS: When the user says 'check again', 're-check', 'cheak agen', or asks a follow-up about messages, tickets, or documents, check conversation history and RE-RUN the appropriate lookup tool (such as showReceivedMessages or checkReAccessTickets). NEVER output a generic greeting on follow-ups!
+4. SENDING FILES: ONLY call 'prepareSecureDocumentDelivery' when the user explicitly commands to SEND or TRANSMIT a file TO someone (e.g. 'Send this PDF to Teacher'). NEVER call this tool when the user is asking whether someone sent them a message, asking about tickets, or asking questions like 'did any student send a ticket?'.
+5. TICKETS & RE-ACCESS: For inquiries about access tickets, pending requests, or student requests (e.g. 'koi student bheja ticket', 'pending tickets'), ALWAYS call 'checkReAccessTickets'.
+6. ACCESSIBLE DOCUMENTS: For questions about accessible documents, call 'findMyAccessibleDocuments'.
+7. RECEIVED MESSAGES: For received messages or who sent documents, call 'showReceivedMessages'.
 8. MANDATORY REASON RULE: If a user asks for re-access to a document (e.g. 'I need X again' or 'raise ticket'), you MUST ask: 'Why do you need access to this document again? Please explain your reason.' A non-empty reason is strictly required before any ticket can be created. Never submit or invent a reason yourself.
-9. For re-access requests and ticket status inquiries, call 'requestDocumentReAccess' and 'checkReAccessTickets'.
 
 LANGUAGE GUIDELINE:
 ${languageInstruction}
@@ -550,21 +565,50 @@ Be concise, polite, professional, and clear.`;
 
   let accumulatedPartial: Partial<ChatResponse> = {};
 
-  // If Gemini did not call tool but user explicitly requested to send a document or attached a file
-  const isSendIntent =
-    userPrompt.toLowerCase().includes("send") ||
-    userPrompt.toLowerCase().includes("bhej") ||
-    userPrompt.toLowerCase().includes("deliver");
+  const lowerPrompt = userPrompt.toLowerCase().trim();
 
-  if ((!functionCalls || functionCalls.length === 0) && (attachedDocumentId || isSendIntent)) {
-    const fallbackToolExec = await executeGeminiTool(
-      "prepareSecureDocumentDelivery",
-      { recipientIdentifier: userPrompt, messageNote: userPrompt },
-      user,
-      attachedDocumentId
-    );
-    if (fallbackToolExec.chatResponsePartial?.messengerAction) {
-      accumulatedPartial = { ...accumulatedPartial, ...fallbackToolExec.chatResponsePartial };
+  // Safeguard: Do NOT treat received questions or ticket inquiries as send commands
+  const isQuestionAboutReceivedOrTickets =
+    lowerPrompt.includes("kya") ||
+    lowerPrompt.includes("kisne") ||
+    lowerPrompt.includes("kisine") ||
+    lowerPrompt.includes("nhi") ||
+    lowerPrompt.includes("nahi") ||
+    lowerPrompt.includes("ticket") ||
+    lowerPrompt.includes("tiket") ||
+    lowerPrompt.includes("check") ||
+    lowerPrompt.includes("cheak") ||
+    lowerPrompt.includes("show") ||
+    lowerPrompt.includes("did anyone") ||
+    lowerPrompt.includes("who sent");
+
+  const isExplicitSendCommand =
+    Boolean(attachedDocumentId) ||
+    lowerPrompt.startsWith("send ") ||
+    lowerPrompt.includes("send to ") ||
+    lowerPrompt.includes("send document to") ||
+    lowerPrompt.includes("send this to") ||
+    lowerPrompt.includes("please send this") ||
+    lowerPrompt.includes("ko bhej do") ||
+    lowerPrompt.includes("ko bhejo") ||
+    lowerPrompt.includes("ko transmit karo");
+
+  if (!functionCalls || functionCalls.length === 0) {
+    if ((lowerPrompt.includes("ticket") || lowerPrompt.includes("tiket")) && !isExplicitSendCommand) {
+      const ticketExec = await executeGeminiTool("checkReAccessTickets", {}, user, attachedDocumentId);
+      if (ticketExec.chatResponsePartial) {
+        accumulatedPartial = { ...accumulatedPartial, ...ticketExec.chatResponsePartial };
+      }
+    } else if (isExplicitSendCommand && !isQuestionAboutReceivedOrTickets) {
+      const fallbackToolExec = await executeGeminiTool(
+        "prepareSecureDocumentDelivery",
+        { recipientIdentifier: userPrompt, messageNote: userPrompt },
+        user,
+        attachedDocumentId
+      );
+      if (fallbackToolExec.chatResponsePartial?.messengerAction) {
+        accumulatedPartial = { ...accumulatedPartial, ...fallbackToolExec.chatResponsePartial };
+      }
     }
   }
 
@@ -585,7 +629,10 @@ Be concise, polite, professional, and clear.`;
         {
           functionResponse: {
             name: call.name,
-            response: toolExec.toolResult,
+            response: {
+              ...toolExec.toolResult,
+              _targetLanguageRequirement: `Explain this result in ${langPref === "hi" ? "Hindi (Devanagari script)" : langPref === "hinglish" ? "natural Hinglish (Roman alphabet)" : "English"}.`,
+            },
           },
         },
       ],

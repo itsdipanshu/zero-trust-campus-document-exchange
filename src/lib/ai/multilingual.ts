@@ -163,11 +163,22 @@ function adaptToHindi(text: string): string {
   res = res.replace(/You currently have no uploaded documents\./g, "वर्तमान में आपका कोई अपलोड किया गया दस्तावेज़ नहीं है।");
   res = res.replace(/You have no active access grants\./g, "आपके पास कोई सक्रिय पहुँच अनुमति नहीं है।");
   res = res.replace(/Access requests do not grant automatic access\./g, "अनुरोध करने से स्वतः पहुँच प्रदान नहीं होती है।");
+  res = res.replace(/You currently have no received messages or shared documents in your private campus vault\./g, "आपके निजी कैंपस वॉल्ट में फ़िलहाल कोई नया संदेश या साझा दस्तावेज़ नहीं आया है।");
+  res = res.replace(/You have no unread notifications\. All caught up!/g, "आपके पास कोई अपठित सूचना नहीं है। सभी अपडेट पूर्ण हैं!");
+  res = res.replace(/Currently there are no document access tickets submitted for review\./g, "विद्यार्थियों द्वारा समीक्षा के लिए कोई लंबित पहुँच टिकट नहीं भेजा गया है।");
+  res = res.replace(/I am Vault AI, your private CampusVault Assistant\./g, "मैं वॉल्ट एआई हूँ, आपका निजी कैंपसवाल्ट सहायक।");
   return res;
 }
 
 function adaptToHinglish(text: string): string {
   let res = text;
+  res = res.replace(/Hello ([^!]+)! I am your private CampusVault Document Assistant\./g, "Hello $1! Main aapka private CampusVault Document Assistant hoon.");
+  res = res.replace(/Under Zero-Trust security, I only have access to records permitted for your verified account[^.]*\./g, "Zero-Trust security ke tehat, mujhe sirf aapke verified account ke authorized records tak hi access hai.");
+  res = res.replace(/You currently have no received messages or shared documents in your private campus vault\./g, "Aapke private campus vault mein filhal koi naye messages ya documents nahi hain.");
+  res = res.replace(/You have no unread notifications\. All caught up!/g, "Aapke paas koi unread notification nahi hai. Sab kuch up to date hai!");
+  res = res.replace(/Currently there are no document access tickets submitted for review\./g, "Filhal students ki taraf se koi pending access ticket nahi aaya hai.");
+  res = res.replace(/I am Vault AI, your private CampusVault Assistant\./g, "Main Vault AI hoon, aapka private CampusVault Assistant.");
+  res = res.replace(/You can ask me:/g, "Aap mujhse pooch sakte hain:");
   res = res.replace(/Here is the document status for/g, "Yeh raha document status for");
   res = res.replace(/Authorized Documents You Can Access/g, "Authorized Documents jinka access aapke paas hai");
   res = res.replace(/Eligible Department Documents Awaiting Grant/g, "Eligible Department Documents jinka grant pending hai");
@@ -181,6 +192,7 @@ function adaptToHinglish(text: string): string {
   res = res.replace(/You currently have no uploaded documents\./g, "Filhal aapka koi uploaded document nahi hai.");
   res = res.replace(/You have no active access grants\./g, "Aapke paas koi active access grant nahi hai.");
   res = res.replace(/Access requests do not grant automatic access\./g, "Access request se automatic download access nahi milta.");
+  res = res.replace(/Your request has been submitted successfully\./g, "Aapka request successfully submit ho gaya hai.");
   return res;
 }
 

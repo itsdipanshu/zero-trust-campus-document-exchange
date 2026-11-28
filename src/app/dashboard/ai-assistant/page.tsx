@@ -118,7 +118,7 @@ interface ChatSession {
 }
 
 export default function AiAssistantPage() {
-  const { t, aiLanguage } = useTranslation();
+  const { t, aiLanguage, setAiLanguage } = useTranslation();
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -637,11 +637,23 @@ export default function AiAssistantPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-[#D9DED8] text-xs text-[#202923]">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-[#D9DED8] text-xs text-[#202923] shadow-sm hover:border-[#477B70] transition-colors">
             <Globe className="w-3.5 h-3.5 text-[#477B70]" />
-            <span className="text-[11px] font-medium">
-              {t("ai.languageBadge")}: {aiLanguage.toUpperCase()}
-            </span>
+            <select
+              value={aiLanguage}
+              onChange={(e) => setAiLanguage(e.target.value)}
+              className="bg-transparent text-[11px] font-semibold text-[#202923] focus:outline-none cursor-pointer pr-1"
+              title="Select AI Conversation Language"
+            >
+              <option value="auto">🌐 AI: AUTO</option>
+              <option value="hinglish">🇮🇳 Hinglish</option>
+              <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
+              <option value="en">🇬🇧 English</option>
+              <option value="es">🇪🇸 Español</option>
+              <option value="fr">🇫🇷 Français</option>
+              <option value="de">🇩🇪 Deutsch</option>
+              <option value="zh">🇨🇳 中文</option>
+            </select>
           </div>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F6ECE0] border border-[#ECD5BA] text-xs text-[#845627]">
             <Sparkles className="w-3.5 h-3.5 text-[#C18B52]" />
