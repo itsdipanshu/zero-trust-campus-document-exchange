@@ -10,8 +10,7 @@ import {
   type SecurityDocument,
   type SecurityGrant,
 } from "@/lib/security/authorization";
-import { readFile } from "fs/promises";
-import path from "path";
+import { retrieveEncryptedDocument } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -129,10 +128,9 @@ export async function GET(
     // ================================================================
     // STEP 3: READ ENCRYPTED STORAGE (ONLY AFTER AUTHORIZATION SUCCEEDS)
     // ================================================================
-    const filePath = path.join(process.cwd(), "uploads", document.storageKey);
     let rawFileBuffer: Buffer;
     try {
-      rawFileBuffer = await readFile(filePath);
+      rawFileBuffer = await retrieveEncryptedDocument(document.storageKey);
     } catch {
       return errorResponse("File not found in storage", 404);
     }

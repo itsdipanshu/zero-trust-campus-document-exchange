@@ -9,6 +9,7 @@ import {
   type SecurityDocument,
   type SecurityGrant,
 } from "@/lib/security/authorization";
+import { deleteEncryptedDocument } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -153,12 +154,15 @@ export async function DELETE(
       return errorResponse("Forbidden", 403);
     }
 
-    // Delete associated grants and audit logs, then document
+    // Delete associated grants, audit logs, and document record
     await prisma.$transaction([
       prisma.accessGrant.deleteMany({ where: { documentId: id } }),
       prisma.auditLog.deleteMany({ where: { documentId: id } }),
       prisma.document.delete({ where: { id } }),
     ]);
+
+    // Clean up physical file in Supabase Storage and local cache
+    deleteEncryptedDocument(document.storageKey).catch(() => {});
 
     return successResponse({ message: "Document deleted" });
   } catch (error) {

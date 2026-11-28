@@ -4,8 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { successResponse, errorResponse, generateStorageKey } from "@/lib/utils";
 import { logAuditEvent } from "@/lib/audit";
 import { encryptDocument } from "@/lib/crypto";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { storeEncryptedDocument } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -158,13 +157,16 @@ export async function POST(request: NextRequest) {
       return errorResponse("File, title, and department are required", 400);
     }
 
+    // Strict file validation: 25MB max
+    if (file.size > 25 * 1024 * 1024) {
+      return errorResponse("File size exceeds 25MB maximum limit", 400);
+    }
+
     // Validate department
     const dept = await prisma.department.findUnique({ where: { id: departmentId } });
     if (!dept) return errorResponse("Department not found", 400);
 
     const storageKey = generateStorageKey(file.name);
-    const uploadDir = path.join(process.cwd(), "uploads");
-    await mkdir(uploadDir, { recursive: true });
 
     // Read plaintext buffer
     const plaintextBuffer = Buffer.from(await file.arrayBuffer());
@@ -172,9 +174,8 @@ export async function POST(request: NextRequest) {
     // AES-256-GCM encryption with unique IV
     const { encryptedBuffer, sha256 } = await encryptDocument(plaintextBuffer);
 
-    // Write encrypted buffer to storage
-    const filePath = path.join(uploadDir, storageKey);
-    await writeFile(filePath, encryptedBuffer);
+    // Securely store encrypted buffer in Supabase Private Bucket + Writable Local Cache
+    await storeEncryptedDocument(storageKey, encryptedBuffer, file.type || "application/octet-stream");
 
     // Create document record
     const document = await prisma.document.create({
@@ -230,8 +231,8 @@ export async function POST(request: NextRequest) {
       },
       201
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("[DOCUMENTS POST]", error);
-    return errorResponse("Failed to upload document", 500);
+    return errorResponse(error?.message || "Failed to upload document", 500);
   }
 }

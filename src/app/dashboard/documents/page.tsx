@@ -209,8 +209,8 @@ export default function DocumentsPage() {
       } else {
         setMessage({ type: "error", text: data.error || "Upload failed" });
       }
-    } catch {
-      setMessage({ type: "error", text: "Upload failed" });
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Upload failed. Please check file size and network connection." });
     } finally {
       setUploading(false);
     }
